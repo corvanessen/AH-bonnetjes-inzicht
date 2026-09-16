@@ -23,6 +23,7 @@ import json
 import socketserver
 import webbrowser
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pandas as pd
 
@@ -31,6 +32,12 @@ from export_dashboard_data import bouw_dashboard_data, laad_account_labels
 
 DATA_MAP = Path("data")
 LABELS_PAD = Path("accounts/labels.json")
+
+# Enige bestanden die dashboard.html zelf opvraagt. Zonder deze whitelist zou
+# SimpleHTTPRequestHandler de hele werkmap serveren, inclusief accounts/ (echte
+# kassabonnen/adressen) en data/*.parquet/.csv - die horen alleen lokaal op
+# schijf te blijven, niet over http bereikbaar te zijn.
+TOEGESTANE_GET_PADEN = {"/dashboard.html", "/favicon.svg", "/data/dashboard_data.json"}
 
 
 def _herbereken_categorieen() -> None:
@@ -59,13 +66,43 @@ def _herbereken_categorieen() -> None:
 
 
 class DashboardHandler(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self) -> None:
+        if urlsplit(self.path).path not in TOEGESTANE_GET_PADEN:
+            self.send_error(404)
+            return
+        super().do_GET()
+
+    def do_HEAD(self) -> None:
+        if urlsplit(self.path).path not in TOEGESTANE_GET_PADEN:
+            self.send_error(404)
+            return
+        super().do_HEAD()
+
     def do_POST(self) -> None:
+        if not self._eigen_origin():
+            self._json_antwoord(403, {"fout": "verzoek moet van de dashboardpagina zelf komen"})
+            return
         if self.path == "/api/categorie":
             self._verwerk_indeling("categorie", "categorie", stel_override_in)
         elif self.path == "/api/subcategorie":
             self._verwerk_indeling("subcategorie", "subcategorie", stel_sub_override_in)
         else:
             self._json_antwoord(404, {"fout": "onbekend endpoint"})
+
+    def _eigen_origin(self) -> bool:
+        """Wijs POST's af die niet vanaf onze eigen dashboardpagina komen.
+
+        Zonder deze check kan elke andere pagina die toevallig openstaat in
+        dezelfde browser (of elk ander lokaal proces) categorie-overrides
+        laten wegschrijven via een cross-origin POST naar deze server.
+        """
+        host, poort = self.server.server_address[:2]
+        eigen_origin = f"http://{host}:{poort}"
+        origin = self.headers.get("Origin")
+        if origin is not None:
+            return origin == eigen_origin
+        referer = self.headers.get("Referer")
+        return referer is not None and referer.startswith(eigen_origin + "/")
 
     def _verwerk_indeling(self, veld: str, antwoordveld: str, override_setter) -> None:
         lengte = int(self.headers.get("Content-Length", 0))
