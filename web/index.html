@@ -3,6 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Defense-in-depth: this app is 100% static and has no legitimate reason to run
+     inline/remote scripts or eval. Uploaded receipt data is only ever inserted via
+     textContent/createElement (never innerHTML), so this mainly guards against a
+     future change accidentally introducing an innerHTML sink. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; worker-src 'self' blob:; connect-src 'self'">
 <title>Boodschappenledger</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Raleway:wght@600;700;800&display=swap">
@@ -204,6 +209,7 @@
     display:grid;
     grid-template-columns:repeat(5,1fr);
     gap:14px;
+    margin:14px 0;
   }
   .kpi{
     --kpi-accent: var(--accent);
@@ -258,8 +264,13 @@
   .filter-row{
     display:flex;
     align-items:center;
-    gap:10px;
+    gap:16px;
     flex-wrap:wrap;
+    padding:14px 18px;
+    background:var(--card);
+    border:1px solid var(--hairline);
+    border-radius:12px;
+    box-shadow:var(--shadow);
   }
   .segmented{
     display:inline-flex;
@@ -295,13 +306,18 @@
   .period-filter{
     display:inline-flex;
     align-items:center;
-    gap:10px;
+    gap:14px;
     flex-wrap:wrap;
+    padding-left:16px;
+    border-left:1px solid var(--hairline);
+  }
+  @media (max-width:640px){
+    .period-filter{ padding-left:0; border-left:none; }
   }
   .period-filter label{
     display:inline-flex;
     align-items:center;
-    gap:6px;
+    gap:7px;
     font-family:"IBM Plex Mono", monospace;
     font-size:12px;
     color:var(--ink-2);
@@ -309,7 +325,7 @@
   .period-filter input[type="date"]{
     font-family:"IBM Plex Mono", monospace;
     font-size:12px;
-    padding:6px 8px;
+    padding:7px 10px;
     border-radius:7px;
     border:1px solid var(--hairline-strong);
     background:var(--card);
@@ -654,24 +670,30 @@
 
   <section class="card" id="uploadPanel" hidden>
     <div class="card-head">
-      <h2>Bonnetjes importeren<span class="sub">JSON-kassabonnen van de connector-tool, of de bestanden uit accounts/&lt;naam&gt;/raw-jsons/data/ — kies er één of meerdere.</span></h2>
+      <h2>Bonnetjes importeren<span class="sub">JSON-kassabonnen van de connector-tool (of accounts/&lt;naam&gt;/raw-jsons/data/) en/of PDF-kassabonnen — kies er één of meerdere, ook gemengd.</span></h2>
       <button class="toggle-btn" id="cancelUploadBtn" hidden>Annuleren</button>
     </div>
     <form class="upload-form" id="uploadForm">
       <label>Naam voor dit account
         <input type="text" id="uploadAccountName" placeholder="bijv. Cor" required>
       </label>
-      <label>JSON-bestanden
-        <input type="file" id="uploadFiles" accept="application/json" multiple required>
+      <label>JSON- en/of PDF-bestanden
+        <input type="file" id="uploadFiles" accept=".json,.pdf,application/json,application/pdf" multiple required>
       </label>
       <button type="submit" class="toggle-btn">Importeren</button>
       <p class="empty-note" id="uploadStatus"></p>
     </form>
   </section>
 
-  <div id="dashboardContent" hidden>
-  <section class="kpi-row" id="kpiRow"></section>
+  <section class="card" id="renderErrorPanel" hidden>
+    <div class="card-head">
+      <h2>Kon het dashboard niet opbouwen<span class="sub">Er ging iets mis bij het verwerken van de opgeslagen data — mogelijk is een account beschadigd.</span></h2>
+    </div>
+    <p class="empty-note" id="renderErrorDetail"></p>
+    <p class="empty-note">Gebruik de accounts hierboven om het betreffende account te verwijderen, of open de browserconsole voor details.</p>
+  </section>
 
+  <div id="dashboardContent" hidden>
   <section class="filter-row">
     <div class="segmented" id="accountFilter"></div>
     <div class="period-filter" id="periodFilter">
@@ -680,6 +702,8 @@
       <button class="toggle-btn" id="periodClearBtn">Hele periode</button>
     </div>
   </section>
+
+  <section class="kpi-row" id="kpiRow"></section>
 
   <section class="card" id="section-time">
     <div class="card-head">

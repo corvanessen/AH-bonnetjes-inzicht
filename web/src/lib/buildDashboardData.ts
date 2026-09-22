@@ -15,14 +15,17 @@ export function buildDashboardData(accounts: AccountData[]): DashboardData {
   const artikelen: Artikel[] = accounts.flatMap((a) => a.artikelen);
   const producten = artikelen.filter((a) => a.type === "product");
 
-  const totalen = bonnen.map((b) => b.totaal).filter((t): t is number => t != null);
+  // Number.isFinite (not `t != null`) so a single malformed numeric field
+  // can't NaN-poison a sum for the whole dashboard — `NaN != null` is true,
+  // so that check alone doesn't exclude it.
+  const totalen = bonnen.map((b) => b.totaal).filter((t): t is number => Number.isFinite(t));
   const datums = bonnen.map((b) => b.datum).filter(Boolean).sort();
 
   const kpi = {
     totaal_uitgegeven: round2(totalen.reduce((s, t) => s + t, 0)),
     aantal_bonnen: bonnen.length,
     gemiddelde_bonwaarde: totalen.length ? round2(totalen.reduce((s, t) => s + t, 0) / totalen.length) : 0.0,
-    totale_bonus_korting: round2(bonnen.reduce((s, b) => s + (b.bonus_korting ?? 0), 0)),
+    totale_bonus_korting: round2(bonnen.reduce((s, b) => s + (Number.isFinite(b.bonus_korting) ? b.bonus_korting : 0), 0)),
     periode_van: datums.length ? datums[0].slice(0, 10) : null,
     periode_tot: datums.length ? datums[datums.length - 1].slice(0, 10) : null,
   };
@@ -34,9 +37,9 @@ export function buildDashboardData(accounts: AccountData[]): DashboardData {
     account: b.account,
     datum: b.datum.slice(0, 10),
     winkel_adres: b.winkel_adres,
-    subtotaal: b.subtotaal != null ? round2(b.subtotaal) : null,
-    bonus_korting: b.bonus_korting != null ? round2(b.bonus_korting) : 0.0,
-    totaal: b.totaal != null ? round2(b.totaal) : null,
+    subtotaal: Number.isFinite(b.subtotaal) ? round2(b.subtotaal as number) : null,
+    bonus_korting: Number.isFinite(b.bonus_korting) ? round2(b.bonus_korting) : 0.0,
+    totaal: Number.isFinite(b.totaal) ? round2(b.totaal as number) : null,
   }));
 
   const artikelenRecords = producten.map((a) => ({
@@ -46,7 +49,7 @@ export function buildDashboardData(accounts: AccountData[]): DashboardData {
     omschrijving: a.omschrijving,
     categorie: a.categorie,
     subcategorie: a.subcategorie ?? "overig",
-    bedrag: a.bedrag != null ? round2(a.bedrag) : 0.0,
+    bedrag: Number.isFinite(a.bedrag) ? round2(a.bedrag as number) : 0.0,
     bonus: !!a.bonus,
   }));
 

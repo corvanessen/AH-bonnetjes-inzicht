@@ -1,10 +1,10 @@
-/** Mirrors the column set of ah_receipts' bonnen/artikelen tables (JSON-source only; see README). */
+/** Mirrors the column set of ah_receipts' bonnen/artikelen tables. */
 
 export interface Bon {
   bon_id: string;
   account: string;
   bestand: string;
-  bron: "json";
+  bron: "json" | "pdf";
   winkel_adres: string | null;
   winkel_nummer: string | null;
   telefoon: string | null;
@@ -13,24 +13,27 @@ export interface Bon {
   totaal_aantal_stuks: number;
   subtotaal: number | null;
   bonus_korting: number;
-  bonus_box: string | null;
+  bonus_box: number | null;
   totaal: number | null;
   klantenkaart: string | null;
   betaalmethode: string | null;
   betaald_bedrag: number | null;
-  spaarzegels: string | null;
+  spaarzegels: number | null;
 }
 
 export interface Artikel {
   bon_id: string;
   account: string;
   datum: string;
-  type: "product";
+  // "statiegeld" (deposit) lines only come from PDF receipts (parseJsonReceipts never
+  // produces them) and are deliberately excluded from category aggregation — see
+  // buildDashboardData.ts's `producten` filter and enrichAccount's `type === "product"` guard.
+  type: "product" | "statiegeld";
   omschrijving: string;
   categorie: string | null;
   subcategorie: string | null;
   product_id: string | null;
-  aantal_weergave: string;
+  aantal_weergave: string | null;
   aantal: number | null;
   stukprijs: number | null;
   bedrag: number | null;

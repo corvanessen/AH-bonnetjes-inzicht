@@ -2,7 +2,9 @@ import { buildDashboardData } from "./lib/buildDashboardData";
 import * as db from "./lib/db";
 import { enrichAccount, recategorize } from "./lib/enrich";
 import { parseJsonReceipts } from "./lib/jsonParser";
+import { parsePdfReceipts } from "./lib/pdfParser";
 import type { AccountData, DashboardData } from "./lib/types";
+import { sanitizeAccountData } from "./lib/validate";
 // dashboard.js is the ported dashboard.html rendering code — see that file's
 // top comment. It only knows how to render a DashboardData object and ask a
 // "store" to persist category edits; loading data and wiring the upload UI
@@ -11,6 +13,8 @@ import { initDashboard, setStore } from "./dashboard.js";
 
 const uploadPanel = document.getElementById("uploadPanel") as HTMLElement;
 const dashboardContent = document.getElementById("dashboardContent") as HTMLElement;
+const renderErrorPanel = document.getElementById("renderErrorPanel") as HTMLElement;
+const renderErrorDetail = document.getElementById("renderErrorDetail") as HTMLElement;
 const dataToolbar = document.getElementById("dataToolbar") as HTMLElement;
 const accountTagsHost = document.getElementById("accountTags") as HTMLElement;
 const uploadForm = document.getElementById("uploadForm") as HTMLFormElement;
@@ -24,6 +28,11 @@ const importBackupBtn = document.getElementById("importBackupBtn") as HTMLButton
 const importBackupInput = document.getElementById("importBackupInput") as HTMLInputElement;
 const clearAllBtn = document.getElementById("clearAllBtn") as HTMLButtonElement;
 
+// Cheap insurance against a mis-selected folder hanging the tab on hundreds
+// of files, or one huge (accidentally wrong) file.
+const MAX_UPLOAD_FILES = 300;
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+
 let accounts: AccountData[] = [];
 
 async function refresh(): Promise<void> {
@@ -31,6 +40,7 @@ async function refresh(): Promise<void> {
 
   if (accounts.length === 0) {
     dashboardContent.hidden = true;
+    renderErrorPanel.hidden = true;
     dataToolbar.hidden = true;
     uploadPanel.hidden = false;
     cancelUploadBtn.hidden = true;
@@ -57,10 +67,22 @@ async function refresh(): Promise<void> {
     accountTagsHost.appendChild(tag);
   });
 
-  const data = await buildData();
-  dashboardContent.hidden = false;
-  uploadPanel.hidden = true;
-  initDashboard(data);
+  // Data that reached IndexedDB should already be sanitized (see validate.ts),
+  // but this is the last line of defense against a bad row crashing the page
+  // outright — show a recoverable error state instead of a blank screen.
+  try {
+    const data = await buildData();
+    dashboardContent.hidden = false;
+    renderErrorPanel.hidden = true;
+    uploadPanel.hidden = true;
+    initDashboard(data);
+  } catch (err) {
+    console.error("Kon het dashboard niet opbouwen:", err);
+    dashboardContent.hidden = true;
+    uploadPanel.hidden = true;
+    renderErrorPanel.hidden = false;
+    renderErrorDetail.textContent = `Foutmelding: ${(err as Error).message}`;
+  }
 }
 
 async function buildData(): Promise<DashboardData> {
@@ -87,31 +109,88 @@ async function recategorizeAllAndRebuild(): Promise<DashboardData> {
   return buildData();
 }
 
+/** Extension-based routing (local files rarely carry a reliable MIME type), with a cheap magic-byte sanity check. */
+async function classifyFile(file: File): Promise<"json" | "pdf" | null> {
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".pdf")) {
+    const header = new Uint8Array(await file.slice(0, 5).arrayBuffer());
+    const magic = String.fromCharCode(...header);
+    return magic === "%PDF-" ? "pdf" : null;
+  }
+  if (name.endsWith(".json")) {
+    const head = (await file.slice(0, 256).text()).trim();
+    return head.startsWith("{") || head.startsWith("[") ? "json" : null;
+  }
+  return null;
+}
+
 uploadForm.addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const account = uploadAccountName.value.trim();
   const fileList = uploadFiles.files;
   if (!account || !fileList || fileList.length === 0) return;
 
-  uploadStatus.textContent = `${fileList.length} bestand(en) inlezen…`;
-  try {
-    const files = await Promise.all(
-      Array.from(fileList).map(async (f) => ({ name: f.name, data: JSON.parse(await f.text()) })),
-    );
-    const { bonnen, artikelen, warnings } = parseJsonReceipts(files);
-    const [overrides, subOverrides] = await Promise.all([db.getOverrides(), db.getSubOverrides()]);
-    const enriched = enrichAccount(account, bonnen, artikelen, overrides, subOverrides);
+  if (fileList.length > MAX_UPLOAD_FILES) {
+    uploadStatus.textContent = `Te veel bestanden in één keer (${fileList.length}, max ${MAX_UPLOAD_FILES}). Importeer in kleinere groepen.`;
+    return;
+  }
+  const totalBytes = Array.from(fileList).reduce((s, f) => s + f.size, 0);
+  if (totalBytes > MAX_UPLOAD_BYTES) {
+    uploadStatus.textContent = `Bestanden samen te groot (${(totalBytes / 1024 / 1024).toFixed(1)} MB, max ${MAX_UPLOAD_BYTES / 1024 / 1024} MB). Importeer in kleinere groepen.`;
+    return;
+  }
 
-    await db.saveAccount({
+  uploadStatus.textContent = `${fileList.length} bestand(en) inlezen…`;
+  const warnings: string[] = [];
+
+  try {
+    const jsonFiles: { name: string; data: unknown }[] = [];
+    const pdfFiles: { name: string; data: ArrayBuffer }[] = [];
+
+    for (const file of Array.from(fileList)) {
+      const kind = await classifyFile(file);
+      if (kind === "json") {
+        try {
+          jsonFiles.push({ name: file.name, data: JSON.parse(await file.text()) });
+        } catch {
+          warnings.push(`kon ${file.name} niet verwerken: ongeldige JSON`);
+        }
+      } else if (kind === "pdf") {
+        pdfFiles.push({ name: file.name, data: await file.arrayBuffer() });
+      } else {
+        warnings.push(`${file.name} overgeslagen: geen herkenbaar .json- of .pdf-kassabonbestand`);
+      }
+    }
+
+    const jsonResult = parseJsonReceipts(jsonFiles);
+    const pdfResult = await parsePdfReceipts(pdfFiles);
+    warnings.push(...jsonResult.warnings, ...pdfResult.warnings);
+
+    const [overrides, subOverrides] = await Promise.all([db.getOverrides(), db.getSubOverrides()]);
+    const enriched = enrichAccount(
+      account,
+      pdfResult.bonnen,
+      pdfResult.artikelen,
+      jsonResult.bonnen,
+      jsonResult.artikelen,
+      overrides,
+      subOverrides,
+    );
+    warnings.push(...enriched.warnings);
+
+    const sanitized = sanitizeAccountData({
       account,
       bonnen: enriched.bonnen,
       artikelen: enriched.artikelen,
       importedAt: new Date().toISOString(),
     });
+    warnings.push(...sanitized.warnings);
+
+    await db.saveAccount(sanitized.data);
 
     uploadStatus.textContent =
-      `${enriched.bonnen.length} bonnetjes geimporteerd voor '${account}'.` +
-      (warnings.length ? ` (${warnings.length} bestand(en) overgeslagen, zie console.)` : "");
+      `${sanitized.data.bonnen.length} bonnetjes geimporteerd voor '${account}'.` +
+      (warnings.length ? ` (${warnings.length} melding(en), zie console.)` : "");
     if (warnings.length) console.warn(warnings.join("\n"));
 
     uploadForm.reset();
@@ -148,8 +227,24 @@ importBackupInput.addEventListener("change", async () => {
   const file = importBackupInput.files?.[0];
   if (!file) return;
   try {
-    const backup = JSON.parse(await file.text());
-    await db.importBackup(backup);
+    const backup = JSON.parse(await file.text()) as {
+      accounts?: AccountData[];
+      overrides?: { omschrijving: string; waarde: string }[];
+      subOverrides?: { omschrijving: string; waarde: string }[];
+    };
+
+    const warnings: string[] = [];
+    const sanitizedAccounts = (Array.isArray(backup.accounts) ? backup.accounts : []).map((account) => {
+      const sanitized = sanitizeAccountData(account);
+      warnings.push(...sanitized.warnings.map((w) => `${account?.account ?? "?"}: ${w}`));
+      return sanitized.data;
+    });
+
+    await db.importBackup({ ...backup, accounts: sanitizedAccounts });
+    if (warnings.length) {
+      console.warn(warnings.join("\n"));
+      window.alert(`Backup geimporteerd, met ${warnings.length} melding(en) — zie console.`);
+    }
     await refresh();
   } catch (err) {
     window.alert(`Backup importeren mislukt: ${(err as Error).message}`);
