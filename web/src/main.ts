@@ -27,6 +27,9 @@ const exportBackupBtn = document.getElementById("exportBackupBtn") as HTMLButton
 const importBackupBtn = document.getElementById("importBackupBtn") as HTMLButtonElement;
 const importBackupInput = document.getElementById("importBackupInput") as HTMLInputElement;
 const clearAllBtn = document.getElementById("clearAllBtn") as HTMLButtonElement;
+const helpBtn = document.getElementById("helpBtn") as HTMLButtonElement;
+const helpOverlay = document.getElementById("helpOverlay") as HTMLElement;
+const helpCloseBtn = document.getElementById("helpCloseBtn") as HTMLButtonElement;
 
 // Cheap insurance against a mis-selected folder hanging the tab on hundreds
 // of files, or one huge (accidentally wrong) file.
@@ -257,6 +260,21 @@ clearAllBtn.addEventListener("click", async () => {
   if (!window.confirm("Alle geimporteerde bonnetjes en categorie-aanpassingen in deze browser wissen? Dit kan niet ongedaan worden gemaakt (tenzij je eerst een backup exporteert).")) return;
   await db.clearAll();
   await refresh();
+});
+
+function openHelp(): void {
+  helpOverlay.hidden = false;
+}
+function closeHelp(): void {
+  helpOverlay.hidden = true;
+}
+helpBtn.addEventListener("click", openHelp);
+helpCloseBtn.addEventListener("click", closeHelp);
+helpOverlay.addEventListener("click", (ev) => {
+  if (ev.target === helpOverlay) closeHelp();
+});
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && !helpOverlay.hidden) closeHelp();
 });
 
 refresh();
