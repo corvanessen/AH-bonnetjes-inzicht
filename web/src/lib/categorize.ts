@@ -15,6 +15,19 @@
 export const ONBEKEND = "overig";
 
 export const REGELS: [string, string[]][] = [
+  // Eigen categorieën (tot nu toe alleen via overrides gevuld) — vóór de
+  // brede categorieën hieronder, anders wint bv. "KIDNEYBONEN" (groente) van
+  // een bonenschotel of "KAAS" (zuivel) van pindakaas.
+  ["kant en klaar", [
+    "PIZZA", "PICCOLINI", "SOEP ", "SOEP IN", "ERWTENSOEP", "SCHOTEL", "SIN CARNE",
+    "CHILI CON", "VERSPAKKET", "VP ", "KAISERSCHMARRN", "MAALTIJD",
+  ]],
+  ["huisdieren", ["FELIX", "WHISKAS", "KATTENBAK", "KATTENVOER", "HONDENVOER", "SHEBA"]],
+  ["broodbeleg", [
+    "PINDAKAAS", "HAGELSLAG", "HUMMUS", "HONING", "STROOP ", "NUTELLA",
+    "CHOCOPASTA", "NOCCIOLA", "BONNE MAMAN", "BONNEMAMAN", "LEVERWORST",
+    "GRILLWORST", "THEEWORST", "BRAADWORST", "SCHOUDERHAM", "SALAMI",
+  ]],
   ["zuivel", [
     "MELK", "YOGH", "KWARK", "KAAS", "ROOM", "CREME FR", "BOTER", "MRG",
     "MARGARINE", "HALVARINE", "EIEREN", "OATLY", "SOJADRINK", "SOJA GURT",
@@ -22,6 +35,7 @@ export const REGELS: [string, string[]][] = [
     "PADANO", "PARMIGGIANO", "PARMESAN", "CAMEMBERT", "GOUDSE", "DZH ",
     "BELEGEN", "PHILADELPHIA", "VIOLIFE", "GRIEKS", "VIFIT", "FETA",
     "BEEMSTER", "RUSTIQUE", "TULIPE", "RASP", "SMEERBAAR", "VLA", "MOZ", "ZAANLANDER",
+    "YOG", "KARNEMELK",
   ]],
   ["groente", [
     "SPINAZIE", "KOMKOM", "COURGETT", "KNOFLOOK", "CHAMPIGN", "ARTISJOK",
@@ -35,14 +49,14 @@ export const REGELS: [string, string[]][] = [
     "KIDNEYBONEN", "WITTE BONEN", "WIT BONEN", "CHILIBONEN", "HAK BONEN",
     "HAK LINZEN", "LINZEN", "KIKKERERWT", "SHIITAKE", "BIO OESTER", "WITLOF",
     "ZWAMMEN", "MAISKORREL", "BOND MAIS", "BONDUELLE", "SPERZIEBOON",
-    "SPERZIEBONEN", "FRIET", "FRITES", "RODE PEP", "BIO CHERRY",
+    "SPERZIEBONEN", "FRIET", "FRITES", "RODE PEP", "BIO CHERRY", "RÖSTI", "ROSTI",
   ]],
   ["fruit", [
     "BANAAN", "BANANEN", "SINAASAPPEL", "GRANAATAPPEL", "BESSE", "BIO BES",
     "BLAUWEBES", "CRANBERR", "WATERMELOEN", "AARDBEI", "NECTARINE", "ELSTAR",
     "BRAMEN", "FRAMBOOS", "FRAMBOZEN", "DRUIF", "DRUIVEN", "LIMOEN", "MANGO",
     "PLUOT", "CITR", "CITROEN", "KERS", "PERZIK", "ZOMERFR", "PINK LADY",
-    "PINK MUSCAT", "BLAUWE BES", "AH BIO APPEL",
+    "PINK MUSCAT", "BLAUWE BES", "AH BIO APPEL", "APPELS ", "BOSVRUCHT",
   ]],
   ["vlees & vleesvervangers", [
     "GEHAKT", "SALAMI", "FUET", "SCHNITZ", "BOCKWORST", "SPEKC", "KIPFI",
@@ -53,7 +67,7 @@ export const REGELS: [string, string[]][] = [
     "VEGA SLAGER", "PLANT HAM", "VEG REEP", "TEMPEH", "TOFU", "BAPAO", "TONIJN",
     "SCHELPEN", "SHOARMA", "BALLETJES", "FRANKFURT", "JACKFRUIT", "CORDON BL",
     "MAKREEL", "KASMI", "MORA ", "KWEKKEB", "LECK BURGER", "STEGEMAN",
-    "AH BIO KIP", "SALAM",
+    "AH BIO KIP", "SALAM", "VEGA ", "KIPREEP",
   ]],
   ["brood & bakkerij", [
     "STOKBROOD", "WASA", "TORT WRAP", "WRAP",
@@ -65,11 +79,11 @@ export const REGELS: [string, string[]][] = [
     "SUIKERBROOD", "CROISSANT", "STROOPWAFEL", "ONTBIJTKOEK", "PEIJNENBURG",
     "KANDIJKOEK", "GEVULDE KOEK", "DONUT", "APPELFLAP", "ROZE KOEKEN",
     "BESCHUIT", "BOLLETJE", "MATZES", "COCO POPS", "FLATBREAD", "HAGEL", "NAAN",
-    "KNACKEBROD",
+    "KNACKEBROD", "BOERENBRUIN",
   ]],
   ["ontbijt", [
     "MUESLI", "CRUESLI", "HAVERMOUT", "VLOKKEN", "GRANOLA", "BRINTA", "FLAKES",
-    "KELLOGG", "GRANEN",
+    "KELLOGG", "GRANEN", "HOLIE",
   ]],
   ["snoep & snacks", [
     "CHIPS", "CHOC", "SNICKERS", "TWIX", "BOUNTY", "NOOT", "NOTEN", "PINDA",
@@ -82,6 +96,7 @@ export const REGELS: [string, string[]][] = [
     "NAT VALLEY", "THIN CRISP", "BORRELNOTEN", "LAY'S", "BISCUIT", "BOOMSTAM",
     "MAGNUM IJS", "SCHEPIJS", "BIO IJS", "REEP", "SPECULAAS", "TABLET",
     "KROEPOEK", "MAISWAF", "PECAN", "DANISH CHEF", "JORDAN", "MIKADO",
+    "MANNER", "NEAPOLITANER", "KATJANG",
   ]],
   ["dranken", [
     "AFFLIG", "DRUIF FL", "HERTOG JAN", "LEFFE", "GRIMBERGEN", "WESTMALLE",
@@ -92,7 +107,8 @@ export const REGELS: [string, string[]][] = [
     "DR PEPPER", "FUZE TEA", "CLIPPER", "LIPTON", "ICE TEA", "DE KOFFIE",
     "CAFE INTEN", "STARB COFFEE", "SIROOP", "WIJN", "ST. PAULI",
     "KARVAN", "BIONADE", "BLOOKER", "DRINK FL", "WATER", "PERLA", "THEE",
-    "SIMON LEVELT", "AH SAP", "AH BIO SAP",
+    "SIMON LEVELT", "AH SAP", "AH BIO SAP", "COCACOLA", "COCA COLA", "SCHWEPPES",
+    "APPELSAP", "SINAASAPPELSAP",
   ]],
   ["huishouden & schoonmaak", [
     "WASMIDDEL", "SCHOONMAAK", "AFWAS", "VAATWAS", "TOILETPAPIER", "WC EEND",
@@ -105,6 +121,20 @@ export const REGELS: [string, string[]][] = [
     "PARODONTAX", "ORAL B", "ANDRELON", "LIBRESSE", "MAANDVERB", "GILL VENUS",
     "HANSAPL", "TIGER BALM", "NATRUE",
   ]],
+  // Eigen categorieën zonder conflict met de brede categorieën: achteraan, zodat
+  // bv. "RIJSTWAF" (snoep) en "TOMATENSAUS" (groente) blijven wat ze waren.
+  ["sauzen", ["KETCH", "MAYO", "MOSTERD ", "GROV MOSTERD", "DIJON", "SAUS", "HELLMANNS", "REMIA", "SALSA"]],
+  ["kruiden, olie en condimenten", [
+    "AZIJN", "BOUILLON", "OLIE", "PESTO", "PASSATA", "TOM PUREE", "KETJAP",
+    "SAMBAL", "BOEMBOE", "TIJM", "OREGANO", "CURRY", "KERRIE", "KAPPERTJES",
+    "MAIZENA", "KEUKENZOUT", "ZWART PEP", "HARISSA", "MOSTERDZAAD",
+  ]],
+  ["pasta en rijst", [
+    "PASTA", "LASAGNE", "FARFA", "FSLLI", "MACARONI", "PENNE", "SPAGHETT", "FUSILLI",
+    "GNOCCHI", "TAGLIATEL", "COUSC", "RIJST", "BASMATI", "BULGUR", "ORZO",
+    "QUINOA", "NOEDEL", "NOODL", "MIENESTJE",
+  ]],
+  ["bakwaren", ["SUIKER", "BLOEM", "MEEL", "BACKIN", "BLADERDEEG", "VANILLA", "APPELM", "MAPLE", "BAKPOEDER"]],
 ];
 
 export const SUB_REGELS: Record<string, [string, string[]][]> = {
@@ -120,7 +150,7 @@ export const SUB_REGELS: Record<string, [string, string[]][]> = {
     ]],
     ["snoep", [
       "HARIBO", "RED BAND", "REDBAND", "TROLLI", "CHUPA CHUPS", "MENTOS",
-      "KLENE DROP", "LOOK O LOOK", "PINBALLS", "DEXTRO", "FUN GUM", "KATJA",
+      "KLENE DROP", "LOOK O LOOK", "PINBALLS", "DEXTRO", "FUN GUM", "KATJA ",
       "BLACK JACK", "SKUUMKOPPE", "KRUIDNOTEN", "LOTUS", "DIGESTIVE", "FOURRE",
       "RICOLA", "MAOAM", "WILHELMINA",
     ]],
@@ -128,8 +158,9 @@ export const SUB_REGELS: Record<string, [string, string[]][]> = {
       "COOKIE", "KOEKJES", "GEVULDE KOEK", "ROZE KOEK", "MIKADO", "PRINCE",
       "SULTANA", "MUFFIN", "DANISH CHEF", "RIJSTWAF", "SCROCCHI", "DONUT",
       "BISCUIT", "SPECULAAS", "ZAANS HUISJE", "WAFEL", "KOKOSBROOD", "VERKADE",
+      "MANNER", "NEAPOLITANER",
     ]],
-    ["noten", ["NOTEN", "NOOT", "PINDA", "PECAN", "STUDENTHVR", "AMAND", "CASHEW", "WALNOT"]],
+    ["noten", ["NOTEN", "NOOT", "PINDA", "PECAN", "STUDENTHVR", "AMAND", "CASHEW", "WALNOT", "KATJANG"]],
     ["ijs", ["IJS", "MAGNUM", "CORNETTO", "RUIMTEIJSJES", "JERRYS"]],
   ],
   "dranken": [
@@ -145,7 +176,7 @@ export const SUB_REGELS: Record<string, [string, string[]][]> = {
     ["koffie", ["KOFFIE", "COFFEE", "CAFE INTEN", "BLOOKER", "PERLA", "BONEN"]],
     ["fris", [
       "COCA-COLA", "DR PEPPER", "FRIS FABRIEK", "BIONADE", "SIROOP", "KARVAN",
-      "SPRINGTIJ", "BIO SIR", "KOLA", "FRITZ",
+      "SPRINGTIJ", "BIO SIR", "KOLA", "FRITZ", "COCACOLA", "COCA COLA", "SCHWEPPES",
     ]],
     ["water", ["WATER", "SPA INTENSE"]],
     ["sap", ["SAP", "APPELSIEN"]],
@@ -162,15 +193,15 @@ export const SUB_REGELS: Record<string, [string, string[]][]> = {
     ["ontbijtkoek", ["ONTBIJTKOEK", "PEIJNENBURG", "KANDIJKOEK", "STROOPWAFEL"]],
     ["brood", [
       "VLOER", "OERD", "DESEM", "TIJGER", "BAKKERS", "SPELT", "L&P", "LP ",
-      "LIBANEES", "FLATBR", "BROOD", "PANN", "NAAN", "WALDK",
+      "LIBANEES", "FLATBR", "BROOD", "PANN", "NAAN", "WALDK", "BOERENBRUIN",
     ]],
   ],
   "fruit": [
     ["bananen", ["BANA"]],
     ["aardbeien", ["AARDBEI"]],
-    ["appels", ["ELSTAR", "JONAGOLD", "APPELTJ"]],
+    ["appels", ["ELSTAR", "JONAGOLD", "APPELTJ", "APPELS "]],
     ["citrusvruchten", ["CITR", "SINAASAPPEL", "LIMOE", "GRAPEFRUIT", "MANDARYN", "MANDARIJN"]],
-    ["bessen", ["BES", "FRAMBO", "BRAMEN", "CRANBERR", "ZOMERFR", "ROOD FRUIT"]],
+    ["bessen", ["BES", "BOSVRUCHT", "FRAMBO", "BRAMEN", "CRANBERR", "ZOMERFR", "ROOD FRUIT"]],
     ["druiven", ["DRUI"]],
     ["watermeloen", ["WATERMELOEN"]],
     ["kersen", [" KERS"]],
@@ -183,7 +214,7 @@ export const SUB_REGELS: Record<string, [string, string[]][]> = {
   "groente": [
     ["aardappelen", [
       "AARDAPPEL", "AARDAPPE", "KRIEL", "FRIET", "FRITES", "FRIES", "SCHIJFJES",
-      "AVIKO", "CRISPS", "POMMES",
+      "AVIKO", "CRISPS", "POMMES", "RÖSTI", "ROSTI",
     ]],
     ["tomaten", ["TOMA", "CHERRY", "MUTTI", "GEZEEF", "ROMA", "TROSTOM"]],
     ["komkommer", ["KOMKOM", "AUGURK"]],
@@ -212,7 +243,7 @@ export const SUB_REGELS: Record<string, [string, string[]][]> = {
       "VIOLIFE", "ZAANLANDER", "PHILADELPHIA",
     ]],
     ["boter", ["MARGARINE", "BLUE BAND", "BLUE B", "HALVARINE", "MRG", "SMEERBAAR"]],
-    ["yoghurt", ["GURT", "YOGH", "KWARQ", "SKYR", "VIFIT", "OPTIMEL", "TERRA YOGH"]],
+    ["yoghurt", ["GURT", "YOG", "KWARK", "KWARQ", "SKYR", "VIFIT", "OPTIMEL", "TERRA YOGH"]],
     ["niet-melk", ["HAVERDR", "OAT", "HAVER", "SOJADRINK", "SOJA", "KOKOSMELK", "KOKOS", "COCONUT", "ALPRO", "RIJSTDRINK"]],
     ["eieren", ["EIEREN"]],
     ["room", ["CREME FR", "SLAGROOM", "SOUR CR"]],
@@ -241,6 +272,11 @@ export const SUB_REGELS: Record<string, [string, string[]][]> = {
       "SPEK", "WORST", "KALFSKROKET", "KIPGEHAKT", "KIPSCHNITZEL", "DRUMSTICK",
       "ONTBIJTSPEK", "ROOKWORST", "SCHNITZEL", "SALAM", "KIP",
     ]],
+  ],
+  "kant en klaar": [
+    ["pizza", ["PIZZA", "PICCOLINI"]],
+    ["soep", ["SOEP"]],
+    ["maaltijden", ["SCHOTEL", "SIN CARNE", "CHILI CON", "VERSPAKKET", "VP ", "MAALTIJD"]],
   ],
   "broodbeleg": [
     ["hagelslag", ["HAGEL", "RUIJTER", "VLOKKEN"]],
@@ -311,6 +347,15 @@ export const PRIJS_AMBIGU_SUB: Record<string, [number, string, string]> = {
   "AH BIO PASTA": [2.5, "pasta", "chocopasta"],
 };
 
+/**
+ * Een trefwoord met een spatie aan het eind ("APPELS ", "STROOP ") betekent
+ * "woord eindigt hier" — ook als het woord het laatste van de omschrijving
+ * is. Zo matcht "BIO APPELS" wel en "APPELSAP" niet.
+ */
+function metWoordeinde(omschrijving: string): string {
+  return `${omschrijving} `;
+}
+
 export function categoriseer(
   omschrijving: string,
   bedrag: number | null | undefined,
@@ -322,8 +367,9 @@ export function categoriseer(
     return bedrag >= drempel ? hoog : laag;
   }
   if (omschrijving in overrides) return overrides[omschrijving];
+  const tekst = metWoordeinde(omschrijving);
   for (const [categorie, trefwoorden] of REGELS) {
-    if (trefwoorden.some((t) => omschrijving.includes(t))) return categorie;
+    if (trefwoorden.some((t) => tekst.includes(t))) return categorie;
   }
   return ONBEKEND;
 }
@@ -340,8 +386,9 @@ export function categoriseerSub(
     return bedrag >= drempel ? hoog : laag;
   }
   if (omschrijving in subOverrides) return subOverrides[omschrijving];
+  const tekst = metWoordeinde(omschrijving);
   for (const [subcategorie, trefwoorden] of SUB_REGELS[categorie] ?? []) {
-    if (trefwoorden.some((t) => omschrijving.includes(t))) return subcategorie;
+    if (trefwoorden.some((t) => tekst.includes(t))) return subcategorie;
   }
   return ONBEKEND;
 }
