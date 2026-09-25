@@ -635,11 +635,16 @@
   .data-toolbar .account-tag button{ border:none; background:none; color:inherit; font:inherit; cursor:pointer; opacity:0.7; }
   .data-toolbar .account-tag button:hover{ opacity:1; }
 
-  .help-btn{
+  .top-actions{
     position:fixed;
     top:16px;
     right:16px;
     z-index:20;
+    display:flex;
+    align-items:flex-start;
+    gap:8px;
+  }
+  .help-btn, .menu-btn{
     font-family:"IBM Plex Mono", monospace;
     font-size:12.5px;
     font-weight:600;
@@ -651,7 +656,61 @@
     cursor:pointer;
     box-shadow:var(--shadow);
   }
-  .help-btn:hover{ background:var(--accent-soft); color:var(--ink); }
+  .help-btn:hover, .menu-btn:hover, .menu-btn[aria-expanded="true"]{ background:var(--accent-soft); color:var(--ink); }
+  .menu-btn{ padding:8px 11px; display:inline-flex; align-items:center; }
+  .menu-btn svg{ width:16px; height:16px; }
+  .menu-wrap{ position:relative; }
+  .action-menu{
+    position:absolute;
+    top:calc(100% + 6px);
+    right:0;
+    min-width:220px;
+    background:var(--card);
+    border:1px solid var(--hairline-strong);
+    border-radius:10px;
+    padding:6px;
+    box-shadow:var(--popup-ring);
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+  }
+  .action-menu button{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:12.5px;
+    text-align:left;
+    padding:8px 10px;
+    border:none;
+    border-radius:7px;
+    background:none;
+    color:var(--ink-2);
+    cursor:pointer;
+  }
+  .action-menu button:hover, .action-menu button:focus-visible{ background:var(--accent-soft); color:var(--ink); outline:none; }
+  .action-menu button.danger{ color:var(--bad); }
+  .action-menu hr{ border:none; border-top:1px solid var(--hairline); margin:4px 2px; }
+
+  .snackbar{
+    position:fixed;
+    left:50%;
+    bottom:24px;
+    z-index:40;
+    width:max-content;
+    max-width:calc(100% - 32px);
+    padding:11px 16px;
+    border-radius:10px;
+    background:var(--ink);
+    color:var(--paper);
+    font-size:13px;
+    line-height:1.45;
+    box-shadow:0 8px 24px -8px rgba(0,0,0,0.35);
+    opacity:0;
+    transform:translate(-50%, 12px);
+    transition:opacity .2s, transform .2s;
+    pointer-events:none;
+  }
+  .snackbar.error{ background:#a8372a; color:#fff; }
+  .snackbar.show{ opacity:1; transform:translate(-50%, 0); pointer-events:auto; }
+  @media (prefers-reduced-motion: reduce){ .snackbar{ transition:none; } }
 
   .modal-overlay{
     position:fixed;
@@ -715,7 +774,24 @@
 </head>
 <body>
 
-<button class="help-btn" id="helpBtn" type="button" aria-haspopup="dialog">Hulp</button>
+<div class="top-actions">
+  <button class="help-btn" id="helpBtn" type="button" aria-haspopup="dialog">Hulp</button>
+  <div class="menu-wrap">
+    <button class="menu-btn" id="menuBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="actionMenu" aria-label="Menu">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/></svg>
+    </button>
+    <div class="action-menu" id="actionMenu" role="menu" hidden>
+      <button type="button" role="menuitem" id="addReceiptsBtn" data-needs-data>Bonnetjes toevoegen</button>
+      <button type="button" role="menuitem" id="addAccountBtn" data-needs-data>Account toevoegen</button>
+      <hr data-needs-data>
+      <button type="button" role="menuitem" id="exportBackupBtn" data-needs-data>Backup exporteren</button>
+      <button type="button" role="menuitem" id="importBackupBtn">Backup importeren</button>
+      <hr data-needs-data>
+      <button type="button" role="menuitem" id="clearAllBtn" class="danger" data-needs-data>Alles wissen</button>
+    </div>
+  </div>
+</div>
+<input type="file" id="importBackupInput" accept="application/json" hidden>
 
 <div class="modal-overlay" id="helpOverlay" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
@@ -729,8 +805,12 @@
         <p>Open de Albert Heijn-app, ga naar je bestel- of aankoopgeschiedenis en open een boodschap. Daar kun je de kassabon als PDF bekijken en downloaden. Die PDF's kun je hier direct uploaden.</p>
       </div>
       <div>
+        <h3>Later meer bonnetjes toevoegen</h3>
+        <p>Via het menu (☰ → "Bonnetjes toevoegen") upload je nieuwe bonnetjes bij een bestaand account. Bonnetjes die er al in zitten worden automatisch overgeslagen.</p>
+      </div>
+      <div>
         <h3>Meerdere huisgenoten</h3>
-        <p>Woon je met meer mensen die ook bij AH boodschappen doen? Voeg iedereen als los <strong>account</strong> toe (met een eigen naam) via "+ Account toevoegen" — het dashboard telt alles automatisch bij elkaar op en je kunt per persoon filteren.</p>
+        <p>Woon je met meer mensen die ook bij AH boodschappen doen? Voeg iedereen als los <strong>account</strong> toe (met een eigen naam) via het menu (☰ → "Account toevoegen") — het dashboard telt alles automatisch bij elkaar op en je kunt per persoon filteren.</p>
       </div>
       <div>
         <h3>Privacy</h3>
@@ -763,22 +843,19 @@
   <div class="data-toolbar" id="dataToolbar" hidden>
     <span class="eyebrow" style="font-size:11px;">Accounts:</span>
     <span id="accountTags"></span>
-    <button class="toggle-btn" id="addAccountBtn">+ Account toevoegen</button>
-    <button class="toggle-btn" id="exportBackupBtn">Backup exporteren</button>
-    <button class="toggle-btn" id="importBackupBtn">Backup importeren</button>
-    <button class="toggle-btn" id="clearAllBtn">Alles wissen</button>
-    <input type="file" id="importBackupInput" accept="application/json" hidden>
   </div>
 
   <section class="card" id="uploadPanel" hidden>
     <div class="card-head">
-      <h2>Bonnetjes importeren<span class="sub">JSON-kassabonnen van de connector-tool (of accounts/&lt;naam&gt;/raw-jsons/data/) en/of PDF-kassabonnen — kies er één of meerdere, ook gemengd.</span></h2>
+      <h2><span id="uploadTitle">Bonnetjes importeren</span><span class="sub">JSON-kassabonnen van de connector-tool (of accounts/&lt;naam&gt;/raw-jsons/data/) en/of PDF-kassabonnen — kies er één of meerdere, ook gemengd.</span></h2>
       <button class="toggle-btn" id="cancelUploadBtn" hidden>Annuleren</button>
     </div>
     <form class="upload-form" id="uploadForm">
       <label>Naam voor dit account *
-        <input type="text" id="uploadAccountName" placeholder="bijv. Cor" required>
+        <input type="text" id="uploadAccountName" placeholder="bijv. Cor" list="accountNameList" autocomplete="off" required>
+        <datalist id="accountNameList"></datalist>
       </label>
+      <p class="privacy-note" id="uploadMergeHint" hidden>Bestaat deze naam al, dan worden de bonnetjes aan dat account toegevoegd. Bonnetjes die er al in zitten worden overgeslagen.</p>
       <label>JSON- en/of PDF-bestanden
         <input type="file" id="uploadFiles" accept=".json,.pdf,application/json,application/pdf" multiple required>
       </label>
@@ -877,6 +954,7 @@
 </div>
 
 <div class="tooltip" id="tooltip"></div>
+<div class="snackbar" id="snackbar" role="status" aria-live="polite"></div>
 
 
 <script type="module" src="/src/main.ts"></script>

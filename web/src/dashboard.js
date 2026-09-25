@@ -4,6 +4,7 @@
 // and category edits go through the `store` set by setStore() instead of
 // a network call, since there is no server here.
 "use strict";
+import { showSnackbar } from "./lib/snackbar";
 
   var CAT_COLOR_VARS = ["--cat-1","--cat-2","--cat-3","--cat-4","--cat-5","--cat-6","--cat-7"];
   var OVERIG_LABEL = "overig (+ klein)";
@@ -1048,7 +1049,7 @@
       buildCategoryColorMap();
       renderAll();
     }).catch(function(err){
-      window.alert("Opslaan mislukt: " + err.message);
+      showSnackbar("Opslaan mislukt: " + err.message, { error: true });
       select.disabled = false;
       select.value = vorigeCategorie;
     });
@@ -1087,7 +1088,7 @@
       buildCategoryColorMap();
       renderAll();
     }).catch(function(err){
-      window.alert("Opslaan mislukt: " + err.message);
+      showSnackbar("Opslaan mislukt: " + err.message, { error: true });
       select.disabled = false;
       select.value = vorigeSubcategorie;
     });

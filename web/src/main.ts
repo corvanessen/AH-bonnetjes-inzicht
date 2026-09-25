@@ -4,6 +4,7 @@ import { enrichAccount, recategorize } from "./lib/enrich";
 import { parseJsonReceipts } from "./lib/jsonParser";
 import { parsePdfReceipts } from "./lib/pdfParser";
 import type { AccountData, DashboardData } from "./lib/types";
+import { showSnackbar } from "./lib/snackbar";
 import { sanitizeAccountData } from "./lib/validate";
 // dashboard.js is the ported dashboard.html rendering code — see that file's
 // top comment. It only knows how to render a DashboardData object and ask a
@@ -22,6 +23,12 @@ const uploadAccountName = document.getElementById("uploadAccountName") as HTMLIn
 const uploadFiles = document.getElementById("uploadFiles") as HTMLInputElement;
 const uploadStatus = document.getElementById("uploadStatus") as HTMLElement;
 const cancelUploadBtn = document.getElementById("cancelUploadBtn") as HTMLButtonElement;
+const uploadTitle = document.getElementById("uploadTitle") as HTMLElement;
+const uploadMergeHint = document.getElementById("uploadMergeHint") as HTMLElement;
+const accountNameList = document.getElementById("accountNameList") as HTMLDataListElement;
+const menuBtn = document.getElementById("menuBtn") as HTMLButtonElement;
+const actionMenu = document.getElementById("actionMenu") as HTMLElement;
+const addReceiptsBtn = document.getElementById("addReceiptsBtn") as HTMLButtonElement;
 const addAccountBtn = document.getElementById("addAccountBtn") as HTMLButtonElement;
 const exportBackupBtn = document.getElementById("exportBackupBtn") as HTMLButtonElement;
 const importBackupBtn = document.getElementById("importBackupBtn") as HTMLButtonElement;
@@ -41,11 +48,24 @@ let accounts: AccountData[] = [];
 async function refresh(): Promise<void> {
   accounts = await db.getAllAccounts();
 
-  if (accounts.length === 0) {
+  const hasData = accounts.length > 0;
+  actionMenu.querySelectorAll<HTMLElement>("[data-needs-data]").forEach((el) => {
+    el.hidden = !hasData;
+  });
+  accountNameList.innerHTML = "";
+  accounts.forEach((a) => {
+    const option = document.createElement("option");
+    option.value = a.account;
+    accountNameList.appendChild(option);
+  });
+  uploadMergeHint.hidden = !hasData;
+
+  if (!hasData) {
     dashboardContent.hidden = true;
     renderErrorPanel.hidden = true;
     dataToolbar.hidden = true;
     uploadPanel.hidden = false;
+    uploadTitle.textContent = "Bonnetjes importeren";
     cancelUploadBtn.hidden = true;
     return;
   }
@@ -64,6 +84,7 @@ async function refresh(): Promise<void> {
       if (!window.confirm(`Data van '${a.account}' verwijderen?`)) return;
       await db.deleteAccount(a.account);
       await refresh();
+      showSnackbar(`Account '${a.account}' verwijderd.`);
     });
     tag.appendChild(label);
     tag.appendChild(removeBtn);
@@ -127,11 +148,28 @@ async function classifyFile(file: File): Promise<"json" | "pdf" | null> {
   return null;
 }
 
+/**
+ * Strips the `${account}__` prefix enrichAccount() adds, so stored rows can be
+ * fed back into enrichAccount() alongside a new upload — that way new PDFs
+ * still replace an earlier JSON copy of the same receipt (and vice versa),
+ * exactly as within a single upload.
+ */
+function unprefixed<T extends { bon_id: string }>(rows: T[], account: string): T[] {
+  const prefix = `${account}__`;
+  return rows.map((r) => (r.bon_id.startsWith(prefix) ? { ...r, bon_id: r.bon_id.slice(prefix.length) } : r));
+}
+
 uploadForm.addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  const account = uploadAccountName.value.trim();
+  const typedName = uploadAccountName.value.trim();
   const fileList = uploadFiles.files;
-  if (!account || !fileList || fileList.length === 0) return;
+  if (!typedName || !fileList || fileList.length === 0) return;
+
+  // Adding to an existing account merges into it instead of replacing it
+  // (saveAccount() overwrites by name). Match case-insensitively so "cor"
+  // doesn't silently create a second account next to "Cor".
+  const existing = accounts.find((a) => a.account.toLowerCase() === typedName.toLowerCase());
+  const account = existing?.account ?? typedName;
 
   if (fileList.length > MAX_UPLOAD_FILES) {
     uploadStatus.textContent = `Te veel bestanden in één keer (${fileList.length}, max ${MAX_UPLOAD_FILES}). Importeer in kleinere groepen.`;
@@ -169,13 +207,29 @@ uploadForm.addEventListener("submit", async (ev) => {
     const pdfResult = await parsePdfReceipts(pdfFiles);
     warnings.push(...jsonResult.warnings, ...pdfResult.warnings);
 
+    // Receipts already in the account are skipped up front: enrichAccount's
+    // own bon_id dedup keeps the first bon but not only its artikelen, so a
+    // re-uploaded receipt would otherwise get its lines counted twice.
+    const oldBonnen = existing ? unprefixed(existing.bonnen, account) : [];
+    const oldArtikelen = existing ? unprefixed(existing.artikelen, account) : [];
+    // A PDF's bon_id is its filename, so the same receipt downloaded again as
+    // "bon (1).pdf" is also caught by its exact timestamp + total.
+    const oldBron = new Map(oldBonnen.map((b) => [b.bon_id, b.bron]));
+    const oldMoments = new Set(oldBonnen.map((b) => `${b.datum}|${b.totaal}`));
+    const newPdfBonnen = pdfResult.bonnen.filter((b) => !oldBron.has(b.bon_id) && !oldMoments.has(`${b.datum}|${b.totaal}`));
+    const newJsonBonnen = jsonResult.bonnen.filter((b) => !oldBron.has(b.bon_id) && !oldMoments.has(`${b.datum}|${b.totaal}`));
+    const keptNewIds = new Set([...newPdfBonnen, ...newJsonBonnen].map((b) => b.bon_id));
+    const isNew = (r: { bon_id: string }) => keptNewIds.has(r.bon_id);
+    const skipped = pdfResult.bonnen.length + jsonResult.bonnen.length - newPdfBonnen.length - newJsonBonnen.length;
+
     const [overrides, subOverrides] = await Promise.all([db.getOverrides(), db.getSubOverrides()]);
     const enriched = enrichAccount(
       account,
-      pdfResult.bonnen,
-      pdfResult.artikelen,
-      jsonResult.bonnen,
-      jsonResult.artikelen,
+      // Old rows go first so they win enrichAccount's bon_id dedup.
+      [...oldBonnen.filter((b) => b.bron === "pdf"), ...newPdfBonnen],
+      [...oldArtikelen.filter((a) => oldBron.get(a.bon_id) === "pdf"), ...pdfResult.artikelen.filter(isNew)],
+      [...oldBonnen.filter((b) => b.bron === "json"), ...newJsonBonnen],
+      [...oldArtikelen.filter((a) => oldBron.get(a.bon_id) === "json"), ...jsonResult.artikelen.filter(isNew)],
       overrides,
       subOverrides,
     );
@@ -191,23 +245,65 @@ uploadForm.addEventListener("submit", async (ev) => {
 
     await db.saveAccount(sanitized.data);
 
-    uploadStatus.textContent =
-      `${sanitized.data.bonnen.length} bonnetjes geimporteerd voor '${account}'.` +
-      (warnings.length ? ` (${warnings.length} melding(en), zie console.)` : "");
+    const message = existing
+      ? `${Math.max(0, sanitized.data.bonnen.length - existing.bonnen.length)} bonnetje(s) toegevoegd aan '${account}'` +
+        (skipped ? `, ${skipped} overgeslagen (zat er al in)` : "") +
+        `. Totaal nu ${sanitized.data.bonnen.length}.`
+      : `${sanitized.data.bonnen.length} bonnetjes geimporteerd voor '${account}'.`;
+    const fullMessage = message + (warnings.length ? ` (${warnings.length} melding(en), zie console.)` : "");
+    uploadStatus.textContent = fullMessage;
     if (warnings.length) console.warn(warnings.join("\n"));
 
     uploadForm.reset();
     await refresh();
+    // The upload panel is hidden again once there is data, so repeat the
+    // result where it's still seen.
+    showSnackbar(fullMessage);
   } catch (err) {
     uploadStatus.textContent = `Importeren mislukt: ${(err as Error).message}`;
   }
 });
 
-addAccountBtn.addEventListener("click", () => {
+function openUpload(mode: "receipts" | "account"): void {
+  uploadForm.reset();
+  uploadStatus.textContent = "";
+  uploadTitle.textContent = mode === "receipts" ? "Bonnetjes toevoegen" : "Account toevoegen";
+  // With a single account there's only one sensible target, so skip the typing.
+  if (mode === "receipts" && accounts.length === 1) uploadAccountName.value = accounts[0].account;
   uploadPanel.hidden = false;
   cancelUploadBtn.hidden = false;
   uploadPanel.scrollIntoView({ behavior: "smooth" });
+  (uploadAccountName.value ? uploadFiles : uploadAccountName).focus({ preventScroll: true });
+}
+
+function openMenu(): void {
+  actionMenu.hidden = false;
+  menuBtn.setAttribute("aria-expanded", "true");
+  actionMenu.querySelector<HTMLButtonElement>("button:not([hidden])")?.focus();
+}
+function closeMenu(): void {
+  actionMenu.hidden = true;
+  menuBtn.setAttribute("aria-expanded", "false");
+}
+menuBtn.addEventListener("click", () => (actionMenu.hidden ? openMenu() : closeMenu()));
+// Every menu item closes the menu after running its own handler.
+actionMenu.addEventListener("click", (ev) => {
+  if ((ev.target as HTMLElement).closest("button")) closeMenu();
 });
+document.addEventListener("click", (ev) => {
+  if (!actionMenu.hidden && !(ev.target as HTMLElement).closest(".menu-wrap")) closeMenu();
+});
+actionMenu.addEventListener("keydown", (ev) => {
+  if (ev.key !== "ArrowDown" && ev.key !== "ArrowUp") return;
+  ev.preventDefault();
+  const items = Array.from(actionMenu.querySelectorAll<HTMLButtonElement>("button:not([hidden])"));
+  const i = items.indexOf(document.activeElement as HTMLButtonElement);
+  const next = ev.key === "ArrowDown" ? (i + 1) % items.length : (i - 1 + items.length) % items.length;
+  items[next]?.focus();
+});
+
+addReceiptsBtn.addEventListener("click", () => openUpload("receipts"));
+addAccountBtn.addEventListener("click", () => openUpload("account"));
 
 cancelUploadBtn.addEventListener("click", () => {
   uploadPanel.hidden = true;
@@ -222,6 +318,7 @@ exportBackupBtn.addEventListener("click", async () => {
   a.download = `boodschappenledger-backup-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
+  showSnackbar(`Backup gedownload als ${a.download}.`);
 });
 
 importBackupBtn.addEventListener("click", () => importBackupInput.click());
@@ -244,13 +341,14 @@ importBackupInput.addEventListener("change", async () => {
     });
 
     await db.importBackup({ ...backup, accounts: sanitizedAccounts });
-    if (warnings.length) {
-      console.warn(warnings.join("\n"));
-      window.alert(`Backup geimporteerd, met ${warnings.length} melding(en) — zie console.`);
-    }
+    if (warnings.length) console.warn(warnings.join("\n"));
     await refresh();
+    showSnackbar(
+      `Backup geimporteerd (${sanitizedAccounts.length} account(s))` +
+        (warnings.length ? `, met ${warnings.length} melding(en) — zie console.` : "."),
+    );
   } catch (err) {
-    window.alert(`Backup importeren mislukt: ${(err as Error).message}`);
+    showSnackbar(`Backup importeren mislukt: ${(err as Error).message}`, { error: true });
   } finally {
     importBackupInput.value = "";
   }
@@ -260,6 +358,7 @@ clearAllBtn.addEventListener("click", async () => {
   if (!window.confirm("Alle geimporteerde bonnetjes en categorie-aanpassingen in deze browser wissen? Dit kan niet ongedaan worden gemaakt (tenzij je eerst een backup exporteert).")) return;
   await db.clearAll();
   await refresh();
+  showSnackbar("Alle data gewist.");
 });
 
 function openHelp(): void {
@@ -274,7 +373,12 @@ helpOverlay.addEventListener("click", (ev) => {
   if (ev.target === helpOverlay) closeHelp();
 });
 document.addEventListener("keydown", (ev) => {
-  if (ev.key === "Escape" && !helpOverlay.hidden) closeHelp();
+  if (ev.key !== "Escape") return;
+  if (!helpOverlay.hidden) closeHelp();
+  if (!actionMenu.hidden) {
+    closeMenu();
+    menuBtn.focus();
+  }
 });
 
 refresh();
