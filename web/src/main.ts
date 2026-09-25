@@ -2,6 +2,7 @@ import { buildDashboardData } from "./lib/buildDashboardData";
 import * as db from "./lib/db";
 import { enrichAccount, recategorize } from "./lib/enrich";
 import { parseJsonReceipts } from "./lib/jsonParser";
+import { parseLidlImages } from "./lib/lidlOcrParser";
 import { parsePdfReceipts } from "./lib/pdfParser";
 import type { AccountData, DashboardData } from "./lib/types";
 import { showSnackbar } from "./lib/snackbar";
@@ -30,6 +31,7 @@ const menuBtn = document.getElementById("menuBtn") as HTMLButtonElement;
 const actionMenu = document.getElementById("actionMenu") as HTMLElement;
 const addReceiptsBtn = document.getElementById("addReceiptsBtn") as HTMLButtonElement;
 const addAccountBtn = document.getElementById("addAccountBtn") as HTMLButtonElement;
+const recategorizeBtn = document.getElementById("recategorizeBtn") as HTMLButtonElement;
 const exportBackupBtn = document.getElementById("exportBackupBtn") as HTMLButtonElement;
 const importBackupBtn = document.getElementById("importBackupBtn") as HTMLButtonElement;
 const importBackupInput = document.getElementById("importBackupInput") as HTMLInputElement;
@@ -134,8 +136,15 @@ async function recategorizeAllAndRebuild(): Promise<DashboardData> {
 }
 
 /** Extension-based routing (local files rarely carry a reliable MIME type), with a cheap magic-byte sanity check. */
-async function classifyFile(file: File): Promise<"json" | "pdf" | null> {
+async function classifyFile(file: File): Promise<"json" | "pdf" | "image" | null> {
   const name = file.name.toLowerCase();
+  if (/\.(png|jpe?g|webp)$/.test(name)) {
+    const h = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+    const png = h[0] === 0x89 && h[1] === 0x50 && h[2] === 0x4e && h[3] === 0x47;
+    const jpeg = h[0] === 0xff && h[1] === 0xd8 && h[2] === 0xff;
+    const webp = String.fromCharCode(...h.slice(0, 4)) === "RIFF" && String.fromCharCode(...h.slice(8, 12)) === "WEBP";
+    return png || jpeg || webp ? "image" : null;
+  }
   if (name.endsWith(".pdf")) {
     const header = new Uint8Array(await file.slice(0, 5).arrayBuffer());
     const magic = String.fromCharCode(...header);
@@ -187,6 +196,7 @@ uploadForm.addEventListener("submit", async (ev) => {
   try {
     const jsonFiles: { name: string; data: unknown }[] = [];
     const pdfFiles: { name: string; data: ArrayBuffer }[] = [];
+    const imageFiles: { name: string; data: Blob }[] = [];
 
     for (const file of Array.from(fileList)) {
       const kind = await classifyFile(file);
@@ -198,14 +208,25 @@ uploadForm.addEventListener("submit", async (ev) => {
         }
       } else if (kind === "pdf") {
         pdfFiles.push({ name: file.name, data: await file.arrayBuffer() });
+      } else if (kind === "image") {
+        imageFiles.push({ name: file.name, data: file });
       } else {
-        warnings.push(`${file.name} overgeslagen: geen herkenbaar .json- of .pdf-kassabonbestand`);
+        warnings.push(`${file.name} overgeslagen: geen herkenbaar .json-, .pdf- of afbeeldingsbestand`);
       }
     }
 
     const jsonResult = parseJsonReceipts(jsonFiles);
-    const pdfResult = await parsePdfReceipts(pdfFiles);
-    warnings.push(...jsonResult.warnings, ...pdfResult.warnings);
+    const pdfOnly = await parsePdfReceipts(pdfFiles);
+    const ocrResult = await parseLidlImages(imageFiles, (klaar, totaal) => {
+      uploadStatus.textContent = `Lidl-bonnetjes lezen (OCR)… ${klaar}/${totaal}`;
+    });
+    // OCR-bonnen (Lidl) lopen verder mee als "pdf-kant": ze hebben nooit een
+    // JSON-tegenhanger, dus mergeSources' PDF/JSON-ontdubbeling raakt ze niet.
+    const pdfResult = {
+      bonnen: [...pdfOnly.bonnen, ...ocrResult.bonnen],
+      artikelen: [...pdfOnly.artikelen, ...ocrResult.artikelen],
+    };
+    warnings.push(...jsonResult.warnings, ...pdfOnly.warnings, ...ocrResult.warnings);
 
     // Receipts already in the account are skipped up front: enrichAccount's
     // own bon_id dedup keeps the first bon but not only its artikelen, so a
@@ -226,8 +247,8 @@ uploadForm.addEventListener("submit", async (ev) => {
     const enriched = enrichAccount(
       account,
       // Old rows go first so they win enrichAccount's bon_id dedup.
-      [...oldBonnen.filter((b) => b.bron === "pdf"), ...newPdfBonnen],
-      [...oldArtikelen.filter((a) => oldBron.get(a.bon_id) === "pdf"), ...pdfResult.artikelen.filter(isNew)],
+      [...oldBonnen.filter((b) => b.bron !== "json"), ...newPdfBonnen],
+      [...oldArtikelen.filter((a) => oldBron.get(a.bon_id) !== "json"), ...pdfResult.artikelen.filter(isNew)],
       [...oldBonnen.filter((b) => b.bron === "json"), ...newJsonBonnen],
       [...oldArtikelen.filter((a) => oldBron.get(a.bon_id) === "json"), ...jsonResult.artikelen.filter(isNew)],
       overrides,
@@ -307,6 +328,47 @@ addAccountBtn.addEventListener("click", () => openUpload("account"));
 
 cancelUploadBtn.addEventListener("click", () => {
   uploadPanel.hidden = true;
+});
+
+// Categorieën worden bij het importeren vastgelegd; nieuwe trefwoordregels
+// (na een update van de app) gelden dus pas na deze bewuste herberekening.
+// Eigen aanpassingen (overrides) gaan altijd voor, maar producten die op een
+// trefwoordregel leunen kunnen verschuiven — daarom eerst tonen wat er verandert.
+recategorizeBtn.addEventListener("click", async () => {
+  const [overrides, subOverrides] = await Promise.all([db.getOverrides(), db.getSubOverrides()]);
+  const herberekend = accounts.map((a) => recategorize(a.artikelen, overrides, subOverrides));
+
+  const voorbeelden = new Map<string, string>();
+  let aantal = 0;
+  accounts.forEach((account, i) => {
+    account.artikelen.forEach((oud, j) => {
+      const nieuw = herberekend[i][j];
+      if (oud.categorie === nieuw.categorie && oud.subcategorie === nieuw.subcategorie) return;
+      aantal++;
+      voorbeelden.set(oud.omschrijving, `${oud.categorie ?? "?"} → ${nieuw.categorie}${nieuw.subcategorie ? ` / ${nieuw.subcategorie}` : ""}`);
+    });
+  });
+
+  if (aantal === 0) {
+    showSnackbar("Alle categorieën zijn al up-to-date.");
+    return;
+  }
+
+  const lijst = [...voorbeelden].slice(0, 8).map(([omschrijving, wijziging]) => `• ${omschrijving}: ${wijziging}`);
+  if (voorbeelden.size > lijst.length) lijst.push(`• … en ${voorbeelden.size - lijst.length} andere product(en)`);
+  const ok = window.confirm(
+    `${aantal} artikelregel(s) (${voorbeelden.size} verschillende producten) krijgen een andere categorie:\n\n` +
+      `${lijst.join("\n")}\n\n` +
+      "Categorieën die je zelf hebt aangepast blijven behouden. Wil je terug kunnen, exporteer dan eerst een backup.\n\nDoorgaan?",
+  );
+  if (!ok) return;
+
+  for (const [i, account] of accounts.entries()) {
+    account.artikelen = herberekend[i];
+    await db.saveAccount(account);
+  }
+  await refresh();
+  showSnackbar(`${voorbeelden.size} product(en) opnieuw ingedeeld.`);
 });
 
 exportBackupBtn.addEventListener("click", async () => {

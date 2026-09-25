@@ -28,7 +28,7 @@ function sanitizeBon(bon: Bon): Bon | null {
   return {
     ...bon,
     bestand: typeof bon.bestand === "string" ? bon.bestand : "",
-    bron: bon.bron === "pdf" ? "pdf" : "json",
+    bron: bon.bron === "pdf" || bon.bron === "ocr" ? bon.bron : "json",
     winkel_adres: typeof bon.winkel_adres === "string" ? bon.winkel_adres : null,
     winkel_nummer: typeof bon.winkel_nummer === "string" ? bon.winkel_nummer : null,
     telefoon: typeof bon.telefoon === "string" ? bon.telefoon : null,

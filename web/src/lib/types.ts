@@ -4,7 +4,8 @@ export interface Bon {
   bon_id: string;
   account: string;
   bestand: string;
-  bron: "json" | "pdf";
+  // "ocr": Lidl-screenshot, zie lidlOcrParser.ts
+  bron: "json" | "pdf" | "ocr";
   winkel_adres: string | null;
   winkel_nummer: string | null;
   telefoon: string | null;

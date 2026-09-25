@@ -7,7 +7,7 @@
      inline/remote scripts or eval. Uploaded receipt data is only ever inserted via
      textContent/createElement (never innerHTML), so this mainly guards against a
      future change accidentally introducing an innerHTML sink. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; worker-src 'self' blob:; connect-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; worker-src 'self' blob:; connect-src 'self'">
 <title>Boodschappenledger</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Raleway:wght@600;700;800&display=swap">
@@ -783,6 +783,7 @@
     <div class="action-menu" id="actionMenu" role="menu" hidden>
       <button type="button" role="menuitem" id="addReceiptsBtn" data-needs-data>Bonnetjes toevoegen</button>
       <button type="button" role="menuitem" id="addAccountBtn" data-needs-data>Account toevoegen</button>
+      <button type="button" role="menuitem" id="recategorizeBtn" data-needs-data>Categorieën herberekenen</button>
       <hr data-needs-data>
       <button type="button" role="menuitem" id="exportBackupBtn" data-needs-data>Backup exporteren</button>
       <button type="button" role="menuitem" id="importBackupBtn">Backup importeren</button>
@@ -805,8 +806,16 @@
         <p>Open de Albert Heijn-app, ga naar je bestel- of aankoopgeschiedenis en open een boodschap. Daar kun je de kassabon als PDF bekijken en downloaden. Die PDF's kun je hier direct uploaden.</p>
       </div>
       <div>
+        <h3>Lidl-bonnetjes (experimenteel)</h3>
+        <p>Open in de Lidl Plus-app een kassabon en maak er een screenshot van (de hele bon in één afbeelding). Die afbeelding kun je hier uploaden; de tekst wordt in je browser herkend (OCR). Een bon wordt alleen opgeslagen als de herkende regels precies optellen tot het totaal op de bon — anders krijg je een melding. Voor de herkenning wordt eenmalig een taalmodel (een paar MB) gedownload; je screenshots zelf verlaten je browser niet.</p>
+      </div>
+      <div>
         <h3>Later meer bonnetjes toevoegen</h3>
         <p>Via het menu (☰ → "Bonnetjes toevoegen") upload je nieuwe bonnetjes bij een bestaand account. Bonnetjes die er al in zitten worden automatisch overgeslagen.</p>
+      </div>
+      <div>
+        <h3>Categorieën herberekenen</h3>
+        <p>De categorie van een product wordt vastgelegd bij het importeren. Worden de indelingsregels later verbeterd, dan kun je via het menu (☰ → "Categorieën herberekenen") je bonnetjes opnieuw laten indelen. Je ziet eerst welke producten veranderen; categorieën die je zelf hebt aangepast blijven altijd behouden.</p>
       </div>
       <div>
         <h3>Meerdere huisgenoten</h3>
@@ -847,7 +856,7 @@
 
   <section class="card" id="uploadPanel" hidden>
     <div class="card-head">
-      <h2><span id="uploadTitle">Bonnetjes importeren</span><span class="sub">JSON-kassabonnen van de connector-tool (of accounts/&lt;naam&gt;/raw-jsons/data/) en/of PDF-kassabonnen — kies er één of meerdere, ook gemengd.</span></h2>
+      <h2><span id="uploadTitle">Bonnetjes importeren</span><span class="sub">JSON-kassabonnen van de connector-tool (of accounts/&lt;naam&gt;/raw-jsons/data/) , PDF-kassabonnen en/of screenshots van Lidl-kassabonnen — kies er één of meerdere, ook gemengd.</span></h2>
       <button class="toggle-btn" id="cancelUploadBtn" hidden>Annuleren</button>
     </div>
     <form class="upload-form" id="uploadForm">
@@ -856,8 +865,8 @@
         <datalist id="accountNameList"></datalist>
       </label>
       <p class="privacy-note" id="uploadMergeHint" hidden>Bestaat deze naam al, dan worden de bonnetjes aan dat account toegevoegd. Bonnetjes die er al in zitten worden overgeslagen.</p>
-      <label>JSON- en/of PDF-bestanden
-        <input type="file" id="uploadFiles" accept=".json,.pdf,application/json,application/pdf" multiple required>
+      <label>JSON-, PDF- en/of Lidl-screenshotbestanden
+        <input type="file" id="uploadFiles" accept=".json,.pdf,.png,.jpg,.jpeg,.webp,application/json,application/pdf,image/png,image/jpeg,image/webp" multiple required>
       </label>
       <button type="submit" class="toggle-btn">Importeren</button>
       <p class="empty-note" id="uploadStatus"></p>

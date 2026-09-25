@@ -45,10 +45,23 @@ STANDAARD_CATEGORIEEN = [
 # noot/noten, worst/(afgekapt)wors) - een volledig woord mist dan de helft
 # van de varianten.
 #
-# Grote pantry-categorieen als pasta/rijst/peulvruchten, kruiden, sauzen en
-# kant-en-klaarmaaltijden vallen bewust op "overig": daar is geen eigen
-# categorie voor in de gekozen indeling.
+# Een trefwoord met een spatie aan het eind ("APPELS ", "STROOP ") betekent
+# "woord eindigt hier", ook als het het laatste woord van de omschrijving is
+# (zie _met_woordeinde): "BIO APPELS" matcht, "APPELSAP" niet.
 REGELS: list[tuple[str, list[str]]] = [
+    # Eigen categorieën (eerst alleen via overrides gevuld) - vóór de brede
+    # categorieën hieronder, anders wint bv. "KIDNEYBONEN" (groente) van een
+    # bonenschotel of "KAAS" (zuivel) van pindakaas.
+    ("kant en klaar", [
+        "PIZZA", "PICCOLINI", "SOEP ", "SOEP IN", "ERWTENSOEP", "SCHOTEL", "SIN CARNE",
+        "CHILI CON", "VERSPAKKET", "VP ", "KAISERSCHMARRN", "MAALTIJD",
+    ]),
+    ("huisdieren", ["FELIX", "WHISKAS", "KATTENBAK", "KATTENVOER", "HONDENVOER", "SHEBA"]),
+    ("broodbeleg", [
+        "PINDAKAAS", "HAGELSLAG", "HUMMUS", "HONING", "STROOP ", "NUTELLA",
+        "CHOCOPASTA", "NOCCIOLA", "BONNE MAMAN", "BONNEMAMAN", "LEVERWORST",
+        "GRILLWORST", "THEEWORST", "BRAADWORST", "SCHOUDERHAM", "SALAMI",
+    ]),
     ("zuivel", [
         "MELK", "YOGH", "KWARK", "KAAS", "ROOM", "CREME FR", "BOTER", "MRG",
         "MARGARINE", "HALVARINE", "EIEREN", "OATLY", "SOJADRINK", "SOJA GURT",
@@ -56,6 +69,7 @@ REGELS: list[tuple[str, list[str]]] = [
         "PADANO", "PARMIGGIANO", "PARMESAN", "CAMEMBERT", "GOUDSE", "DZH ",
         "BELEGEN", "PHILADELPHIA", "VIOLIFE", "GRIEKS", "VIFIT", "FETA",
         "BEEMSTER", "RUSTIQUE", "TULIPE", "RASP", "SMEERBAAR", "VLA", "MOZ", "ZAANLANDER",
+        "YOG", "KARNEMELK",
     ]),
     ("groente", [
         "SPINAZIE", "KOMKOM", "COURGETT", "KNOFLOOK", "CHAMPIGN", "ARTISJOK",
@@ -69,14 +83,14 @@ REGELS: list[tuple[str, list[str]]] = [
         "KIDNEYBONEN", "WITTE BONEN", "WIT BONEN", "CHILIBONEN", "HAK BONEN",
         "HAK LINZEN", "LINZEN", "KIKKERERWT", "SHIITAKE", "BIO OESTER", "WITLOF",
         "ZWAMMEN", "MAISKORREL", "BOND MAIS", "BONDUELLE", "SPERZIEBOON",
-        "SPERZIEBONEN", "FRIET", "FRITES", "RODE PEP", "BIO CHERRY",
+        "SPERZIEBONEN", "FRIET", "FRITES", "RODE PEP", "BIO CHERRY", "RÖSTI", "ROSTI",
     ]),
     ("fruit", [
         "BANAAN", "BANANEN", "SINAASAPPEL", "GRANAATAPPEL", "BESSE", "BIO BES",
         "BLAUWEBES", "CRANBERR", "WATERMELOEN", "AARDBEI", "NECTARINE", "ELSTAR",
         "BRAMEN", "FRAMBOOS", "FRAMBOZEN", "DRUIF", "DRUIVEN", "LIMOEN", "MANGO",
         "PLUOT", "CITR", "CITROEN", "KERS", "PERZIK", "ZOMERFR", "PINK LADY",
-        "PINK MUSCAT", "BLAUWE BES", "AH BIO APPEL",
+        "PINK MUSCAT", "BLAUWE BES", "AH BIO APPEL", "APPELS ", "BOSVRUCHT",
     ]),
     ("vlees & vleesvervangers", [
         "GEHAKT", "SALAMI", "FUET", "SCHNITZ", "BOCKWORST", "SPEKC", "KIPFI",
@@ -87,7 +101,7 @@ REGELS: list[tuple[str, list[str]]] = [
         "VEGA SLAGER", "PLANT HAM", "VEG REEP", "TEMPEH", "TOFU", "BAPAO", "TONIJN",
         "SCHELPEN", "SHOARMA", "BALLETJES", "FRANKFURT", "JACKFRUIT", "CORDON BL",
         "MAKREEL", "KASMI", "MORA ", "KWEKKEB", "LECK BURGER", "STEGEMAN",
-        "AH BIO KIP", "SALAM",
+        "AH BIO KIP", "SALAM", "VEGA ", "KIPREEP",
     ]),
     ("brood & bakkerij", [
         "STOKBROOD", "WASA", "TORT WRAP", "WRAP",
@@ -99,11 +113,11 @@ REGELS: list[tuple[str, list[str]]] = [
         "SUIKERBROOD", "CROISSANT", "STROOPWAFEL", "ONTBIJTKOEK", "PEIJNENBURG",
         "KANDIJKOEK", "GEVULDE KOEK", "DONUT", "APPELFLAP", "ROZE KOEKEN",
         "BESCHUIT", "BOLLETJE", "MATZES", "COCO POPS", "FLATBREAD", "HAGEL", "NAAN", 
-        "KNACKEBROD",
+        "KNACKEBROD", "BOERENBRUIN",
     ]),
     ("ontbijt", [
         "MUESLI", "CRUESLI", "HAVERMOUT", "VLOKKEN", "GRANOLA", "BRINTA", "FLAKES",
-          "KELLOGG", "GRANEN",
+          "KELLOGG", "GRANEN", "HOLIE",
         ]),
     ("snoep & snacks", [
         "CHIPS", "CHOC", "SNICKERS", "TWIX", "BOUNTY", "NOOT", "NOTEN", "PINDA",
@@ -116,6 +130,7 @@ REGELS: list[tuple[str, list[str]]] = [
         "NAT VALLEY", "THIN CRISP", "BORRELNOTEN", "LAY'S", "BISCUIT", "BOOMSTAM",
         "MAGNUM IJS", "SCHEPIJS", "BIO IJS", "REEP", "SPECULAAS", "TABLET",
         "KROEPOEK", "MAISWAF", "PECAN", "DANISH CHEF", "JORDAN", "MIKADO",
+        "MANNER", "NEAPOLITANER", "KATJANG",
     ]),
     ("dranken", [
         "AFFLIG", "DRUIF FL", "HERTOG JAN", "LEFFE", "GRIMBERGEN", "WESTMALLE",
@@ -126,7 +141,8 @@ REGELS: list[tuple[str, list[str]]] = [
         "DR PEPPER", "FUZE TEA", "CLIPPER", "LIPTON", "ICE TEA", "DE KOFFIE",
         "CAFE INTEN", "STARB COFFEE", "SIROOP",  "WIJN", "ST. PAULI",
         "KARVAN", "BIONADE", "BLOOKER", "DRINK FL", "WATER", "PERLA", "THEE",
-        "SIMON LEVELT", "AH SAP", "AH BIO SAP",
+        "SIMON LEVELT", "AH SAP", "AH BIO SAP", "COCACOLA", "COCA COLA", "SCHWEPPES",
+        "APPELSAP", "SINAASAPPELSAP",
     ]),
     ("huishouden & schoonmaak", [
         "WASMIDDEL", "SCHOONMAAK", "AFWAS", "VAATWAS", "TOILETPAPIER", "WC EEND",
@@ -139,6 +155,20 @@ REGELS: list[tuple[str, list[str]]] = [
         "PARODONTAX", "ORAL B", "ANDRELON", "LIBRESSE", "MAANDVERB", "GILL VENUS",
         "HANSAPL", "TIGER BALM", "NATRUE",
     ]),
+    # Eigen categorieën zonder conflict met de brede categorieën: achteraan, zodat
+    # bv. "RIJSTWAF" (snoep) en "TOMATENSAUS" (groente) blijven wat ze waren.
+    ("sauzen", ["KETCH", "MAYO", "MOSTERD ", "GROV MOSTERD", "DIJON", "SAUS", "HELLMANNS", "REMIA", "SALSA"]),
+    ("kruiden, olie en condimenten", [
+        "AZIJN", "BOUILLON", "OLIE", "PESTO", "PASSATA", "TOM PUREE", "KETJAP",
+        "SAMBAL", "BOEMBOE", "TIJM", "OREGANO", "CURRY", "KERRIE", "KAPPERTJES",
+        "MAIZENA", "KEUKENZOUT", "ZWART PEP", "HARISSA", "MOSTERDZAAD",
+    ]),
+    ("pasta en rijst", [
+        "PASTA", "LASAGNE", "FARFA", "FSLLI", "MACARONI", "PENNE", "SPAGHETT", "FUSILLI",
+        "GNOCCHI", "TAGLIATEL", "COUSC", "RIJST", "BASMATI", "BULGUR", "ORZO",
+        "QUINOA", "NOEDEL", "NOODL", "MIENESTJE",
+    ]),
+    ("bakwaren", ["SUIKER", "BLOEM", "MEEL", "BACKIN", "BLADERDEEG", "VANILLA", "APPELM", "MAPLE", "BAKPOEDER"]),
 ]
 
 # Trefwoorden voor de onderverdeling *binnen* een categorie (drill-down in
@@ -158,7 +188,7 @@ SUB_REGELS: dict[str, list[tuple[str, list[str]]]] = {
         ]),
         ("snoep", [
             "HARIBO", "RED BAND", "REDBAND", "TROLLI", "CHUPA CHUPS", "MENTOS",
-            "KLENE DROP", "LOOK O LOOK", "PINBALLS", "DEXTRO", "FUN GUM", "KATJA",
+            "KLENE DROP", "LOOK O LOOK", "PINBALLS", "DEXTRO", "FUN GUM", "KATJA ",
             "BLACK JACK", "SKUUMKOPPE", "KRUIDNOTEN", "LOTUS", "DIGESTIVE", "FOURRE",
             "RICOLA", "MAOAM", "WILHELMINA",
         ]),
@@ -166,8 +196,9 @@ SUB_REGELS: dict[str, list[tuple[str, list[str]]]] = {
             "COOKIE", "KOEKJES", "GEVULDE KOEK", "ROZE KOEK", "MIKADO", "PRINCE",
             "SULTANA", "MUFFIN", "DANISH CHEF", "RIJSTWAF", "SCROCCHI", "DONUT",
             "BISCUIT", "SPECULAAS", "ZAANS HUISJE", "WAFEL", "KOKOSBROOD", "VERKADE",
+            "MANNER", "NEAPOLITANER",
         ]),
-        ("noten", ["NOTEN", "NOOT", "PINDA", "PECAN", "STUDENTHVR", "AMAND", "CASHEW", "WALNOT"]),
+        ("noten", ["NOTEN", "NOOT", "PINDA", "PECAN", "STUDENTHVR", "AMAND", "CASHEW", "WALNOT", "KATJANG"]),
         ("ijs", ["IJS", "MAGNUM", "CORNETTO", "RUIMTEIJSJES", "JERRYS"]),
     ],
     "dranken": [
@@ -191,7 +222,7 @@ SUB_REGELS: dict[str, list[tuple[str, list[str]]]] = {
         ]),
         ("fris", [
             "COCA-COLA", "DR PEPPER", "FRIS FABRIEK", "BIONADE", "SIROOP", "KARVAN",
-            "SPRINGTIJ", "BIO SIR", "KOLA", "FRITZ",
+            "SPRINGTIJ", "BIO SIR", "KOLA", "FRITZ", "COCACOLA", "COCA COLA", "SCHWEPPES",
         ]),
         ("water", [
             "WATER", "SPA INTENSE",
@@ -215,7 +246,7 @@ SUB_REGELS: dict[str, list[tuple[str, list[str]]]] = {
         # vangnet: alles met "brood" erin dat niet al hierboven matchte.
         ("brood", [
             "VLOER", "OERD", "DESEM", "TIJGER", "BAKKERS", "SPELT", "L&P", "LP ",
-            "LIBANEES", "FLATBR", "BROOD", "PANN", "NAAN", "WALDK",
+            "LIBANEES", "FLATBR", "BROOD", "PANN", "NAAN", "WALDK", "BOERENBRUIN",
         ]),
     ],
     "fruit": [
@@ -223,11 +254,11 @@ SUB_REGELS: dict[str, list[tuple[str, list[str]]]] = {
         # de eerste 4 letters (klinkerwisseling AA -> A).
         ("bananen", ["BANA"]),
         ("aardbeien", ["AARDBEI"]),
-        ("appels", ["ELSTAR", "JONAGOLD", "APPELTJ"]),
+        ("appels", ["ELSTAR", "JONAGOLD", "APPELTJ", "APPELS "]),
         ("citrusvruchten", [
             "CITR", "SINAASAPPEL", "LIMOE", "GRAPEFRUIT", "MANDARYN", "MANDARIJN",
         ]),
-        ("bessen", ["BES", "FRAMBO", "BRAMEN", "CRANBERR", "ZOMERFR", "ROOD FRUIT"]),
+        ("bessen", ["BES", "BOSVRUCHT", "FRAMBO", "BRAMEN", "CRANBERR", "ZOMERFR", "ROOD FRUIT"]),
         ("druiven", ["DRUI"]),
         ("watermeloen", ["WATERMELOEN"]),
         # spatie voor "KERS" voorkomt dat "(CR)ACKERS" meteen als kersen matcht.
@@ -250,7 +281,7 @@ SUB_REGELS: dict[str, list[tuple[str, list[str]]]] = {
         # verder nergens anders in deze categorie voor.
         ("aardappelen", [
             "AARDAPPEL", "AARDAPPE", "KRIEL", "FRIET", "FRITES", "FRIES", "SCHIJFJES",
-            "AVIKO", "CRISPS", "POMMES",
+            "AVIKO", "CRISPS", "POMMES", "RÖSTI", "ROSTI",
         ]),
         # "TOMA" (niet "TOMAT") omdat "tomaat" (enkelvoud) een dubbele A heeft
         # en dus geen "TOMAT" bevat - alleen "tomaten" (meervoud) wel.
@@ -288,7 +319,7 @@ SUB_REGELS: dict[str, list[tuple[str, list[str]]]] = {
             "VIOLIFE", "ZAANLANDER", "PHILADELPHIA",
         ]),
         ("boter", ["MARGARINE", "BLUE BAND", "BLUE B", "HALVARINE", "MRG", "SMEERBAAR"]),
-        ("yoghurt", ["GURT", "YOGH", "KWARQ", "SKYR", "VIFIT", "OPTIMEL", "TERRA YOGH"]),
+        ("yoghurt", ["GURT", "YOG", "KWARK", "KWARQ", "SKYR", "VIFIT", "OPTIMEL", "TERRA YOGH"]),
         ("niet-melk", [
             "HAVERDR", "OAT", "HAVER", "SOJADRINK", "SOJA", "KOKOSMELK", "KOKOS",
             "COCONUT", "ALPRO", "RIJSTDRINK",
@@ -325,6 +356,11 @@ SUB_REGELS: dict[str, list[tuple[str, list[str]]]] = {
             "SPEK", "WORST", "KALFSKROKET", "KIPGEHAKT", "KIPSCHNITZEL", "DRUMSTICK",
             "ONTBIJTSPEK", "ROOKWORST", "SCHNITZEL", "SALAM", "KIP",
         ]),
+    ],
+    "kant en klaar": [
+        ("pizza", ["PIZZA", "PICCOLINI"]),
+        ("soep", ["SOEP"]),
+        ("maaltijden", ["SCHOTEL", "SIN CARNE", "CHILI CON", "VERSPAKKET", "VP ", "MAALTIJD"]),
     ],
     "broodbeleg": [
         ("hagelslag", ["HAGEL", "RUIJTER", "VLOKKEN"]),
@@ -436,6 +472,11 @@ def stel_override_in(omschrijving: str, categorie: str) -> None:
     _OVERRIDES = overrides
 
 
+def _met_woordeinde(omschrijving: str) -> str:
+    """Zie REGELS: een trefwoord met spatie aan het eind matcht ook aan het eind van de omschrijving."""
+    return f"{omschrijving} "
+
+
 def categoriseer(omschrijving: str, bedrag: float | None = None) -> str:
     """Geef de categorie voor een productomschrijving, of "overig" als niets matcht.
 
@@ -449,8 +490,9 @@ def categoriseer(omschrijving: str, bedrag: float | None = None) -> str:
         return hoog if bedrag >= drempel else laag
     if omschrijving in _OVERRIDES:
         return _OVERRIDES[omschrijving]
+    tekst = _met_woordeinde(omschrijving)
     for categorie, trefwoorden in REGELS:
-        if any(trefwoord in omschrijving for trefwoord in trefwoorden):
+        if any(trefwoord in tekst for trefwoord in trefwoorden):
             return categorie
     return ONBEKEND
 
@@ -496,7 +538,8 @@ def categoriseer_sub(omschrijving: str, categorie: str, bedrag: float | None = N
         return hoog if bedrag >= drempel else laag
     if omschrijving in _SUB_OVERRIDES:
         return _SUB_OVERRIDES[omschrijving]
+    tekst = _met_woordeinde(omschrijving)
     for subcategorie, trefwoorden in SUB_REGELS.get(categorie, []):
-        if any(trefwoord in omschrijving for trefwoord in trefwoorden):
+        if any(trefwoord in tekst for trefwoord in trefwoorden):
             return subcategorie
     return ONBEKEND
