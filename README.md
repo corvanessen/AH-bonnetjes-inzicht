@@ -84,6 +84,77 @@ browser. Nieuwe bonnetjes toevoegen = `main.py` en `export_dashboard_data.py`
 opnieuw draaien en de dashboardpagina verversen (de server hoeft niet
 herstart te worden).
 
+## AH-bonnetjes direct ophalen in het web-dashboard
+
+Het web-dashboard staat online op
+<https://corvanessen.github.io/AH-bonnetjes-inzicht/> (alle data blijft in je
+eigen browser). Het kan je AH-bonnetjes zelf downloaden en inlezen, via
+menu ☰ → "Ophalen bij supermarkt…". Een gewone website mag dat niet: AH
+weigert verzoeken vanaf andere websites, en de AH-login stuurt je terug naar
+een `appie://`-adres voor de app. Daarom loopt het via de browser-extensie in
+`extension/`.
+
+### Browser-extensie installeren
+
+De extensie staat (nog) niet in de Chrome Web Store en werkt alleen op de
+computer, in Chrome, Edge of Brave — niet in Firefox, Safari of op je telefoon.
+
+1. Download [`ah-bonnetjes-extensie.zip`](https://github.com/corvanessen/AH-bonnetjes-inzicht/releases/latest/download/ah-bonnetjes-extensie.zip)
+   en pak hem uit. Je krijgt een map met o.a. `manifest.json` erin.
+2. Open `chrome://extensions` (Edge: `edge://extensions`) en zet
+   **Ontwikkelaarsmodus** aan.
+3. Klik **Uitgepakte extensie laden** en kies de uitgepakte map (de map waar
+   `manifest.json` direct in staat).
+4. Herlaad het dashboard. In het menu werkt "Ophalen bij supermarkt…" nu.
+
+Goed om te weten:
+
+- Laat de uitgepakte map staan; Chrome laadt de extensie steeds vanuit die map.
+- Chrome kan bij het opstarten waarschuwen over extensies in
+  ontwikkelaarsmodus. Op een werk- of beheerde computer is ontwikkelaarsmodus
+  soms helemaal geblokkeerd.
+- Een uitgepakte extensie werkt zichzelf niet bij. Voor een nieuwe versie:
+  zip opnieuw downloaden, uitpakken over de oude map en in
+  `chrome://extensions` op ↻ klikken.
+- De extensie gebruikt dezelfde (onofficiële) API als de AH-app. AH kan die
+  zonder waarschuwing veranderen; dan werkt ophalen tijdelijk niet.
+
+Zo werkt de extensie:
+
+- **Inloggen:** er opent een venster met de echte `login.ah.nl`. De extensie
+  vangt de `appie://login-exit?code=…`-doorverwijzing op, net als `appie login`
+  van [appie-go](https://github.com/gwillem/appie-go), maar zonder proxy.
+- **Tokens:** die blijven in de opslag van de extensie in je eigen browser.
+  Het dashboard krijgt alleen de bonnetjes, en er zit geen server tussen jou
+  en AH.
+- **Wat wordt opgehaald:** alleen bonnetjes die nog niet in het account in het
+  dashboard staan.
+- **Problemen?** Open `chrome://extensions` → "AH Bonnetjes ophalen" →
+  *service worker*. De console daar laat zien wat de extensie doet
+  (`[AH-bonnetjes] …`).
+
+### Een nieuwe versie van de extensie uitbrengen
+
+Verhoog `version` in `extension/manifest.json`, commit, en push een tag die
+begint met `extensie-v` (bv. `git tag extensie-v0.2.0 && git push origin
+extensie-v0.2.0`). De workflow `release-extension.yml` maakt dan een GitHub
+Release met `ah-bonnetjes-extensie.zip`; de downloadlink hierboven wijst
+altijd naar de nieuwste.
+
+### Alternatief voor ontwikkelaars: `ah_bridge.py`
+
+Zonder extensie kan het ook via een lokaal Python-hulpprogramma. Het
+dashboard gebruikt dat automatisch als het draait en de extensie er niet is:
+
+```
+uv run ah_bridge.py                                        # luistert op http://127.0.0.1:8765
+uv run ah_bridge.py --allow-origin http://localhost:4173   # extra dashboard-origin toestaan
+```
+
+Dit script proxyt de AH-loginpagina lokaal. De tokens komen in
+`~/.config/appie/config-<account>.json`, hetzelfde bestand dat
+`appie login -c …` en `fetch_receipts.py --account <account>` gebruiken.
+
 ## Verkennen
 
 ```

@@ -770,6 +770,29 @@
   }
   .modal-body p{ margin:0; font-size:13.5px; line-height:1.55; color:var(--ink-2); }
   .modal-body p strong{ color:var(--ink); }
+
+  .fetch-body .upload-form label{ max-width:none; }
+  .store-choice{ display:flex; flex-wrap:wrap; gap:8px; }
+  .store-option{
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:13px; color:var(--ink);
+    padding:7px 12px; border:1px solid var(--hairline-strong); border-radius:8px; cursor:pointer;
+  }
+  .store-option:has(input:checked){ background:var(--accent-soft); border-color:var(--accent); }
+  .store-option.is-disabled{ color:var(--muted); cursor:not-allowed; }
+  .store-option .soon{ font-size:11px; }
+  .fetch-actions{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-top:8px; }
+  .toggle-btn.primary{ background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  .toggle-btn.primary:hover{ filter:brightness(1.08); background:var(--accent); }
+  .toggle-btn:disabled{ opacity:.5; cursor:not-allowed; }
+  .link-btn{
+    border:none; background:none; padding:0; cursor:pointer;
+    font:inherit; font-size:12.5px; color:var(--muted); text-decoration:underline;
+  }
+  .link-btn:hover{ color:var(--ink); }
+  #fetchProgress{ width:100%; margin-top:10px; accent-color:var(--accent); }
+  .fetch-progress-text{ font-size:12.5px !important; color:var(--muted) !important; margin-top:4px !important; }
+  #fetchConnStatus code{ font-family:"IBM Plex Mono", monospace; font-size:12px; background:var(--accent-soft); padding:1px 5px; border-radius:4px; }
 </style>
 </head>
 <body>
@@ -781,6 +804,7 @@
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/></svg>
     </button>
     <div class="action-menu" id="actionMenu" role="menu" hidden>
+      <button type="button" role="menuitem" id="fetchStoreBtn">Ophalen bij supermarkt…</button>
       <button type="button" role="menuitem" id="addReceiptsBtn" data-needs-data>Bonnetjes toevoegen</button>
       <button type="button" role="menuitem" id="addAccountBtn" data-needs-data>Account toevoegen</button>
       <button type="button" role="menuitem" id="recategorizeBtn" data-needs-data>Categorieën herberekenen</button>
@@ -806,6 +830,11 @@
         <p>Open de Albert Heijn-app, ga naar je bestel- of aankoopgeschiedenis en open een boodschap. Daar kun je de kassabon als PDF bekijken en downloaden. Die PDF's kun je hier direct uploaden.</p>
       </div>
       <div>
+        <h3>AH-bonnetjes direct ophalen</h3>
+        <p>Via het menu (☰ → "Ophalen bij supermarkt…") log je in bij AH en worden je bonnetjes automatisch gedownload en ingelezen. Omdat AH dit niet rechtstreeks vanuit een website toestaat, heb je daarvoor de browser-extensie <strong>AH Bonnetjes ophalen</strong> nodig. Die logt in op de echte AH-loginpagina en bewaart je AH-sessie in je eigen browser; het dashboard krijgt alleen de bonnetjes. Er is geen server tussen jou en AH.</p>
+        <p>De extensie werkt alleen op de computer, in Chrome, Edge of Brave. <a href="https://github.com/corvanessen/AH-bonnetjes-inzicht#browser-extensie-installeren" target="_blank" rel="noopener">Zo installeer je hem</a> — het kost een paar minuten en hoeft maar één keer.</p>
+      </div>
+      <div>
         <h3>Lidl-bonnetjes (experimenteel)</h3>
         <p>Open in de Lidl Plus-app een kassabon en maak er een screenshot van (de hele bon in één afbeelding). Die afbeelding kun je hier uploaden; de tekst wordt in je browser herkend (OCR). Een bon wordt alleen opgeslagen als de herkende regels precies optellen tot het totaal op de bon — anders krijg je een melding. Voor de herkenning wordt eenmalig een taalmodel (een paar MB) gedownload; je screenshots zelf verlaten je browser niet.</p>
       </div>
@@ -823,7 +852,49 @@
       </div>
       <div>
         <h3>Privacy</h3>
-        <p>Alle data blijft in je eigen browser (IndexedDB). Er is geen server die je bonnetjes ontvangt, verwerkt of bewaart — niets wordt ergens anders opgeslagen of gedeeld.</p>
+        <p>Alle data blijft in je eigen browser (IndexedDB). Er is geen server die je bonnetjes ontvangt, verwerkt of bewaart — niets wordt ergens anders opgeslagen of gedeeld. Haal je bonnetjes op via de extensie, dan praat die rechtstreeks met AH; je AH-sessie staat alleen in de opslag van de extensie.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="fetchOverlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="fetchTitle">
+    <div class="modal-head">
+      <h2 id="fetchTitle">Ophalen bij supermarkt</h2>
+      <button class="modal-close" id="fetchCloseBtn" type="button" aria-label="Sluiten">×</button>
+    </div>
+    <div class="modal-body fetch-body">
+      <div>
+        <h3>1. Supermarkt</h3>
+        <div class="store-choice" role="radiogroup" aria-label="Supermarkt">
+          <label class="store-option"><input type="radio" name="fetchStore" value="ah" checked> Albert Heijn</label>
+          <label class="store-option is-disabled" title="Lidl-bonnetjes importeer je via een screenshot (Bonnetjes toevoegen)"><input type="radio" name="fetchStore" value="lidl" disabled> Lidl <span class="soon">via screenshot</span></label>
+        </div>
+      </div>
+      <div class="upload-form">
+        <h3>2. Account</h3>
+        <label>Naam voor dit account in het dashboard
+          <input type="text" id="fetchAccountName" placeholder="bijv. Cor" list="accountNameList" autocomplete="off">
+        </label>
+      </div>
+      <div>
+        <h3>3. Inloggen bij AH</h3>
+        <p id="fetchConnStatus">Verbinding controleren…</p>
+        <div class="fetch-actions">
+          <button type="button" class="toggle-btn" id="fetchRetryBtn" hidden>Opnieuw controleren</button>
+          <button type="button" class="toggle-btn" id="fetchLoginBtn" hidden>Inloggen bij AH</button>
+          <button type="button" class="link-btn" id="fetchLogoutBtn" hidden>Uitloggen</button>
+        </div>
+      </div>
+      <div>
+        <h3>4. Bonnetjes ophalen</h3>
+        <p>Alleen bonnetjes die nog niet in het account staan worden gedownload en direct ingelezen.</p>
+        <div class="fetch-actions">
+          <button type="button" class="toggle-btn primary" id="fetchStartBtn" disabled>Bonnetjes ophalen</button>
+        </div>
+        <progress id="fetchProgress" max="1" value="0" hidden></progress>
+        <p class="fetch-progress-text" id="fetchProgressText" aria-live="polite"></p>
       </div>
     </div>
   </div>
@@ -869,6 +940,7 @@
         <input type="file" id="uploadFiles" accept=".json,.pdf,.png,.jpg,.jpeg,.webp,application/json,application/pdf,image/png,image/jpeg,image/webp" multiple required>
       </label>
       <button type="submit" class="toggle-btn">Importeren</button>
+      <p class="privacy-note">Of <button type="button" class="link-btn" id="uploadFetchLink">haal je AH-bonnetjes direct op bij AH</button>.</p>
       <p class="empty-note" id="uploadStatus"></p>
     </form>
   </section>
@@ -885,9 +957,9 @@
   <section class="filter-row">
     <div class="segmented" id="accountFilter"></div>
     <div class="period-filter" id="periodFilter">
+      <div class="segmented" id="periodPresets" role="group" aria-label="Snelkeuze periode"></div>
       <label>Van <input type="date" id="dateFromInput"></label>
       <label>Tot <input type="date" id="dateToInput"></label>
-      <button class="toggle-btn" id="periodClearBtn">Hele periode</button>
     </div>
   </section>
 

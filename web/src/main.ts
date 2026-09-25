@@ -4,7 +4,7 @@ import { enrichAccount, recategorize } from "./lib/enrich";
 import { parseJsonReceipts } from "./lib/jsonParser";
 import { parseLidlImages } from "./lib/lidlOcrParser";
 import { parsePdfReceipts } from "./lib/pdfParser";
-import type { AccountData, DashboardData } from "./lib/types";
+import type { AccountData, Artikel, Bon, DashboardData } from "./lib/types";
 import { showSnackbar } from "./lib/snackbar";
 import { sanitizeAccountData } from "./lib/validate";
 // dashboard.js is the ported dashboard.html rendering code — see that file's
@@ -12,6 +12,7 @@ import { sanitizeAccountData } from "./lib/validate";
 // "store" to persist category edits; loading data and wiring the upload UI
 // is this module's job.
 import { initDashboard, setStore } from "./dashboard.js";
+import { initFetchModal } from "./fetchModal";
 
 const uploadPanel = document.getElementById("uploadPanel") as HTMLElement;
 const dashboardContent = document.getElementById("dashboardContent") as HTMLElement;
@@ -29,7 +30,9 @@ const uploadMergeHint = document.getElementById("uploadMergeHint") as HTMLElemen
 const accountNameList = document.getElementById("accountNameList") as HTMLDataListElement;
 const menuBtn = document.getElementById("menuBtn") as HTMLButtonElement;
 const actionMenu = document.getElementById("actionMenu") as HTMLElement;
-const addReceiptsBtn = document.getElementById("addReceiptsBtn") as HTMLButtonElement;
+const fetchStoreBtn = document.getElementById("fetchStoreBtn") as HTMLButtonElement;
+const uploadFetchLink = document.getElementById("uploadFetchLink") as HTMLButtonElement;
+const addReceiptsBtn =document.getElementById("addReceiptsBtn") as HTMLButtonElement;
 const addAccountBtn = document.getElementById("addAccountBtn") as HTMLButtonElement;
 const recategorizeBtn = document.getElementById("recategorizeBtn") as HTMLButtonElement;
 const exportBackupBtn = document.getElementById("exportBackupBtn") as HTMLButtonElement;
@@ -174,12 +177,6 @@ uploadForm.addEventListener("submit", async (ev) => {
   const fileList = uploadFiles.files;
   if (!typedName || !fileList || fileList.length === 0) return;
 
-  // Adding to an existing account merges into it instead of replacing it
-  // (saveAccount() overwrites by name). Match case-insensitively so "cor"
-  // doesn't silently create a second account next to "Cor".
-  const existing = accounts.find((a) => a.account.toLowerCase() === typedName.toLowerCase());
-  const account = existing?.account ?? typedName;
-
   if (fileList.length > MAX_UPLOAD_FILES) {
     uploadStatus.textContent = `Te veel bestanden in één keer (${fileList.length}, max ${MAX_UPLOAD_FILES}). Importeer in kleinere groepen.`;
     return;
@@ -228,53 +225,8 @@ uploadForm.addEventListener("submit", async (ev) => {
     };
     warnings.push(...jsonResult.warnings, ...pdfOnly.warnings, ...ocrResult.warnings);
 
-    // Receipts already in the account are skipped up front: enrichAccount's
-    // own bon_id dedup keeps the first bon but not only its artikelen, so a
-    // re-uploaded receipt would otherwise get its lines counted twice.
-    const oldBonnen = existing ? unprefixed(existing.bonnen, account) : [];
-    const oldArtikelen = existing ? unprefixed(existing.artikelen, account) : [];
-    // A PDF's bon_id is its filename, so the same receipt downloaded again as
-    // "bon (1).pdf" is also caught by its exact timestamp + total.
-    const oldBron = new Map(oldBonnen.map((b) => [b.bon_id, b.bron]));
-    const oldMoments = new Set(oldBonnen.map((b) => `${b.datum}|${b.totaal}`));
-    const newPdfBonnen = pdfResult.bonnen.filter((b) => !oldBron.has(b.bon_id) && !oldMoments.has(`${b.datum}|${b.totaal}`));
-    const newJsonBonnen = jsonResult.bonnen.filter((b) => !oldBron.has(b.bon_id) && !oldMoments.has(`${b.datum}|${b.totaal}`));
-    const keptNewIds = new Set([...newPdfBonnen, ...newJsonBonnen].map((b) => b.bon_id));
-    const isNew = (r: { bon_id: string }) => keptNewIds.has(r.bon_id);
-    const skipped = pdfResult.bonnen.length + jsonResult.bonnen.length - newPdfBonnen.length - newJsonBonnen.length;
-
-    const [overrides, subOverrides] = await Promise.all([db.getOverrides(), db.getSubOverrides()]);
-    const enriched = enrichAccount(
-      account,
-      // Old rows go first so they win enrichAccount's bon_id dedup.
-      [...oldBonnen.filter((b) => b.bron !== "json"), ...newPdfBonnen],
-      [...oldArtikelen.filter((a) => oldBron.get(a.bon_id) !== "json"), ...pdfResult.artikelen.filter(isNew)],
-      [...oldBonnen.filter((b) => b.bron === "json"), ...newJsonBonnen],
-      [...oldArtikelen.filter((a) => oldBron.get(a.bon_id) === "json"), ...jsonResult.artikelen.filter(isNew)],
-      overrides,
-      subOverrides,
-    );
-    warnings.push(...enriched.warnings);
-
-    const sanitized = sanitizeAccountData({
-      account,
-      bonnen: enriched.bonnen,
-      artikelen: enriched.artikelen,
-      importedAt: new Date().toISOString(),
-    });
-    warnings.push(...sanitized.warnings);
-
-    await db.saveAccount(sanitized.data);
-
-    const message = existing
-      ? `${Math.max(0, sanitized.data.bonnen.length - existing.bonnen.length)} bonnetje(s) toegevoegd aan '${account}'` +
-        (skipped ? `, ${skipped} overgeslagen (zat er al in)` : "") +
-        `. Totaal nu ${sanitized.data.bonnen.length}.`
-      : `${sanitized.data.bonnen.length} bonnetjes geimporteerd voor '${account}'.`;
-    const fullMessage = message + (warnings.length ? ` (${warnings.length} melding(en), zie console.)` : "");
+    const fullMessage = await importIntoAccount(typedName, jsonResult, pdfResult, warnings);
     uploadStatus.textContent = fullMessage;
-    if (warnings.length) console.warn(warnings.join("\n"));
-
     uploadForm.reset();
     await refresh();
     // The upload panel is hidden again once there is data, so repeat the
@@ -284,6 +236,72 @@ uploadForm.addEventListener("submit", async (ev) => {
     uploadStatus.textContent = `Importeren mislukt: ${(err as Error).message}`;
   }
 });
+
+type ParsedReceipts = { bonnen: Bon[]; artikelen: Artikel[] };
+
+/**
+ * Merges freshly parsed receipts into an account (creating it if needed) and
+ * saves it. Shared by the file upload and the AH-API fetch. Returns the
+ * user-facing result message; the caller refreshes the dashboard.
+ */
+async function importIntoAccount(
+  typedName: string,
+  jsonResult: ParsedReceipts,
+  pdfResult: ParsedReceipts,
+  warnings: string[],
+): Promise<string> {
+  // Adding to an existing account merges into it instead of replacing it
+  // (saveAccount() overwrites by name). Match case-insensitively so "cor"
+  // doesn't silently create a second account next to "Cor".
+  const existing = accounts.find((a) => a.account.toLowerCase() === typedName.toLowerCase());
+  const account = existing?.account ?? typedName;
+
+  // Receipts already in the account are skipped up front: enrichAccount's
+  // own bon_id dedup keeps the first bon but not only its artikelen, so a
+  // re-uploaded receipt would otherwise get its lines counted twice.
+  const oldBonnen = existing ? unprefixed(existing.bonnen, account) : [];
+  const oldArtikelen = existing ? unprefixed(existing.artikelen, account) : [];
+  // A PDF's bon_id is its filename, so the same receipt downloaded again as
+  // "bon (1).pdf" is also caught by its exact timestamp + total.
+  const oldBron = new Map(oldBonnen.map((b) => [b.bon_id, b.bron]));
+  const oldMoments = new Set(oldBonnen.map((b) => `${b.datum}|${b.totaal}`));
+  const newPdfBonnen = pdfResult.bonnen.filter((b) => !oldBron.has(b.bon_id) && !oldMoments.has(`${b.datum}|${b.totaal}`));
+  const newJsonBonnen = jsonResult.bonnen.filter((b) => !oldBron.has(b.bon_id) && !oldMoments.has(`${b.datum}|${b.totaal}`));
+  const keptNewIds = new Set([...newPdfBonnen, ...newJsonBonnen].map((b) => b.bon_id));
+  const isNew = (r: { bon_id: string }) => keptNewIds.has(r.bon_id);
+  const skipped = pdfResult.bonnen.length + jsonResult.bonnen.length - newPdfBonnen.length - newJsonBonnen.length;
+
+  const [overrides, subOverrides] = await Promise.all([db.getOverrides(), db.getSubOverrides()]);
+  const enriched = enrichAccount(
+    account,
+    // Old rows go first so they win enrichAccount's bon_id dedup.
+    [...oldBonnen.filter((b) => b.bron !== "json"), ...newPdfBonnen],
+    [...oldArtikelen.filter((a) => oldBron.get(a.bon_id) !== "json"), ...pdfResult.artikelen.filter(isNew)],
+    [...oldBonnen.filter((b) => b.bron === "json"), ...newJsonBonnen],
+    [...oldArtikelen.filter((a) => oldBron.get(a.bon_id) === "json"), ...jsonResult.artikelen.filter(isNew)],
+    overrides,
+    subOverrides,
+  );
+  warnings.push(...enriched.warnings);
+
+  const sanitized = sanitizeAccountData({
+    account,
+    bonnen: enriched.bonnen,
+    artikelen: enriched.artikelen,
+    importedAt: new Date().toISOString(),
+  });
+  warnings.push(...sanitized.warnings);
+
+  await db.saveAccount(sanitized.data);
+
+  const message = existing
+    ? `${Math.max(0, sanitized.data.bonnen.length - existing.bonnen.length)} bonnetje(s) toegevoegd aan '${account}'` +
+      (skipped ? `, ${skipped} overgeslagen (zat er al in)` : "") +
+      `. Totaal nu ${sanitized.data.bonnen.length}.`
+    : `${sanitized.data.bonnen.length} bonnetjes geimporteerd voor '${account}'.`;
+  if (warnings.length) console.warn(warnings.join("\n"));
+  return message + (warnings.length ? ` (${warnings.length} melding(en), zie console.)` : "");
+}
 
 function openUpload(mode: "receipts" | "account"): void {
   uploadForm.reset();
@@ -322,6 +340,17 @@ actionMenu.addEventListener("keydown", (ev) => {
   const next = ev.key === "ArrowDown" ? (i + 1) % items.length : (i - 1 + items.length) % items.length;
   items[next]?.focus();
 });
+
+const fetchModal = initFetchModal({
+  getAccounts: () => accounts,
+  async importJson(account, parsed) {
+    const message = await importIntoAccount(account, parsed, { bonnen: [], artikelen: [] }, [...parsed.warnings]);
+    await refresh();
+    return message;
+  },
+});
+fetchStoreBtn.addEventListener("click", () => fetchModal.open());
+uploadFetchLink.addEventListener("click", () => fetchModal.open());
 
 addReceiptsBtn.addEventListener("click", () => openUpload("receipts"));
 addAccountBtn.addEventListener("click", () => openUpload("account"));
@@ -437,6 +466,7 @@ helpOverlay.addEventListener("click", (ev) => {
 document.addEventListener("keydown", (ev) => {
   if (ev.key !== "Escape") return;
   if (!helpOverlay.hidden) closeHelp();
+  if (fetchModal.isOpen()) fetchModal.close();
   if (!actionMenu.hidden) {
     closeMenu();
     menuBtn.focus();
