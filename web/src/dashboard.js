@@ -435,10 +435,36 @@ import { showSnackbar } from "./lib/snackbar";
 
   // ---------- period filter (van/tot) ----------
 
+  // Snelkeuzes rekenen terug vanaf vandaag (niet vanaf de laatste bon), met
+  // een open einddatum. months === null betekent "alles".
+  var PERIOD_PRESETS = [
+    { label:"Laatste maand", months:1 },
+    { label:"3 maanden", months:3 },
+    { label:"Jaar", months:12 },
+    { label:"Alles", months:null }
+  ];
+
+  // Vandaag als kalenderdatum in de lokale tijdzone van de kijker; de
+  // maandrekening daarna gebeurt weer in UTC (zie parseISODate).
+  function todayISO(){
+    var d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  // iso min N maanden; valt de dag buiten de doelmaand (31 mrt - 1 mnd) dan
+  // de laatste dag van die maand in plaats van door te schuiven naar maart.
+  function minusMonths(iso, n){
+    var p = iso.split("-").map(Number);
+    var laatsteDag = new Date(Date.UTC(p[0], p[1] - n, 0)).getUTCDate();
+    return toISODateString(new Date(Date.UTC(p[0], p[1] - 1 - n, Math.min(p[2], laatsteDag))));
+  }
+  function presetFrom(preset){
+    return preset.months === null ? null : minusMonths(todayISO(), preset.months);
+  }
+
   function renderPeriodFilter(){
     var fromInput = document.getElementById("dateFromInput");
     var toInput = document.getElementById("dateToInput");
-    var clearBtn = document.getElementById("periodClearBtn");
+    var presetHost = document.getElementById("periodPresets");
 
     // min/max op basis van de volledige dataset (niet het huidige account-
     // filter) zodat de datumkiezers niet steeds van grenzen wisselen zodra je
@@ -450,7 +476,24 @@ import { showSnackbar } from "./lib/snackbar";
     }
     fromInput.value = state.dateFrom || "";
     toInput.value = state.dateTo || "";
-    clearBtn.hidden = !state.dateFrom && !state.dateTo;
+
+    // Een snelkeuze is actief zolang de van/tot-velden er precies mee
+    // overeenkomen; pas je een datum handmatig aan, dan licht er geen op.
+    presetHost.innerHTML = "";
+    PERIOD_PRESETS.forEach(function(preset){
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = preset.label;
+      var actief = !state.dateTo && state.dateFrom === presetFrom(preset);
+      if (actief) btn.classList.add("active");
+      btn.setAttribute("aria-pressed", actief ? "true" : "false");
+      btn.addEventListener("click", function(){
+        state.dateFrom = presetFrom(preset);
+        state.dateTo = null;
+        renderAll();
+      });
+      presetHost.appendChild(btn);
+    });
 
     fromInput.onchange = function(){
       state.dateFrom = fromInput.value || null;
@@ -458,11 +501,6 @@ import { showSnackbar } from "./lib/snackbar";
     };
     toInput.onchange = function(){
       state.dateTo = toInput.value || null;
-      renderAll();
-    };
-    clearBtn.onclick = function(){
-      state.dateFrom = null;
-      state.dateTo = null;
       renderAll();
     };
   }

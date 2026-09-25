@@ -1,0 +1,47 @@
+name: Release browser extension
+
+# Push een tag als `extensie-v0.2.0` om een release met de extensie-zip te maken.
+on:
+  push:
+    tags: ["extensie-v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Bestaande of nieuwe tag, bv. extensie-v0.1.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Versie in manifest controleren
+        run: |
+          manifest=$(jq -r .version extension/manifest.json)
+          if [ "extensie-v$manifest" != "$TAG" ]; then
+            echo "::error::Tag $TAG past niet bij manifest-versie $manifest"
+            exit 1
+          fi
+
+      # Bestanden in de root van de zip, zodat uitpakken direct een map met
+      # manifest.json oplevert die je in chrome://extensions kunt laden.
+      - name: Zip maken
+        run: cd extension && zip -r ../ah-bonnetjes-extensie.zip . -x '.*'
+
+      - name: Release maken of bijwerken
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" ah-bonnetjes-extensie.zip --clobber
+          else
+            gh release create "$TAG" ah-bonnetjes-extensie.zip \
+              --target "$GITHUB_SHA" \
+              --title "Browser-extensie ${TAG#extensie-}" \
+              --notes "Installeren: zie https://github.com/corvanessen/AH-bonnetjes-inzicht#browser-extensie-installeren"
+          fi
