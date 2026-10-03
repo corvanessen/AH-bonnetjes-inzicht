@@ -87,7 +87,7 @@ def parse_json_bon(json_pad: Path) -> tuple[dict, list[dict]]:
             "datum": lokale_datum,
             "type": "product",
             "omschrijving": (product.get("name") or "").strip(),
-            "product_id": product.get("id"),
+            "product_id": str(product["id"]) if product.get("id") is not None else None,
             "aantal_weergave": str(aantal),
             "aantal": float(aantal) if aantal is not None else None,
             "stukprijs": stukprijs,

@@ -11,8 +11,24 @@
  * same file being uploaded twice in one batch) runs after, like main.py's
  * account-prefixing step implicitly does by keeping bon_id as the row key.
  */
-import { categoriseer, categoriseerSub } from "./categorize";
+import { categoriseer, categoriseerSub, type AhCategorie, type GebruikersRegel } from "./categorize";
 import type { Artikel, Bon } from "./types";
+
+/** Alles wat de indeling van een artikel bepaalt, naast de trefwoorden in categorize.ts. */
+export interface CategorieContext {
+  overrides: Record<string, string>;
+  subOverrides: Record<string, string>;
+  regels: GebruikersRegel[];
+  /** product_id -> AH's eigen categorie, al vertaald naar onze indeling. */
+  ahProducten: Record<string, AhCategorie>;
+}
+
+export function deelIn(a: Artikel, ctx: CategorieContext): { categorie: string; subcategorie: string } {
+  const opties = { regels: ctx.regels, ah: a.product_id ? ctx.ahProducten[a.product_id] ?? null : null };
+  const categorie = categoriseer(a.omschrijving, a.bedrag, ctx.overrides, opties);
+  const subcategorie = categoriseerSub(a.omschrijving, categorie, a.bedrag, ctx.subOverrides, opties);
+  return { categorie, subcategorie };
+}
 
 // Kassa-klok en digitale registratie lopen vaak een paar minuten uiteen — zie
 // ah_receipts/samenvoegen.py.
@@ -103,8 +119,7 @@ export function enrichAccount(
   pdfArtikelen: Artikel[],
   jsonBonnen: Bon[],
   jsonArtikelen: Artikel[],
-  overrides: Record<string, string>,
-  subOverrides: Record<string, string>,
+  ctx: CategorieContext,
 ): { bonnen: Bon[]; artikelen: Artikel[]; warnings: string[] } {
   const merged = mergeSources(pdfBonnen, pdfArtikelen, jsonBonnen, jsonArtikelen);
 
@@ -123,9 +138,7 @@ export function enrichAccount(
       if (a.type !== "product") {
         return { ...a, account, bon_id: `${account}__${a.bon_id}`, categorie: null, subcategorie: null };
       }
-      const categorie = categoriseer(a.omschrijving, a.bedrag, overrides);
-      const subcategorie = categoriseerSub(a.omschrijving, categorie, a.bedrag, subOverrides);
-      return { ...a, account, bon_id: `${account}__${a.bon_id}`, categorie, subcategorie };
+      return { ...a, account, bon_id: `${account}__${a.bon_id}`, ...deelIn(a, ctx) };
     });
 
   const { bonnen: bonnenMetAdres, warning } = backfillAddresses(bonnen);
@@ -138,15 +151,6 @@ export function enrichAccount(
 }
 
 /** Re-applies categorize() to already-imported artikelen after an override changes — mirrors serve_dashboard.py's _herbereken_categorieen(). */
-export function recategorize(
-  artikelen: Artikel[],
-  overrides: Record<string, string>,
-  subOverrides: Record<string, string>,
-): Artikel[] {
-  return artikelen.map((a) => {
-    if (a.type !== "product") return a;
-    const categorie = categoriseer(a.omschrijving, a.bedrag, overrides);
-    const subcategorie = categoriseerSub(a.omschrijving, categorie, a.bedrag, subOverrides);
-    return { ...a, categorie, subcategorie };
-  });
+export function recategorize(artikelen: Artikel[], ctx: CategorieContext): Artikel[] {
+  return artikelen.map((a) => (a.type === "product" ? { ...a, ...deelIn(a, ctx) } : a));
 }

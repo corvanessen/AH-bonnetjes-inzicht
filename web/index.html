@@ -10,6 +10,10 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; worker-src 'self' blob:; connect-src 'self'">
 <title>Boodschappenledger</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="theme-color" content="#f6f3ea" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Raleway:wght@600;700;800&display=swap">
 <style>
   :root{color-scheme:light}
@@ -118,12 +122,17 @@
     border-radius:7px;
     line-height:1.3;
   }
-  .sidenav a:hover{ background:var(--accent-soft); color:var(--ink); }
+  @media (hover:hover){ .sidenav a:hover{ background:var(--accent-soft); color:var(--ink); } }
   .sidenav a.active{
     background:var(--accent);
     color:var(--accent-ink);
     font-weight:600;
   }
+  .sidenav-links{ display:flex; flex-direction:column; gap:2px; }
+  .section-picker{ display:none; }
+  /* Telefoon/tablet: in plaats van een rij tabs (die niet past) één knop met
+     de huidige sectie; een tik opent de lijst met alle secties. Hulp en het
+     menu (.top-actions) staan rechts in dezelfde balk. */
   @media (max-width:860px){
     .layout{ flex-direction:column; }
     .sidenav{
@@ -132,17 +141,52 @@
       width:100%;
       height:auto;
       flex-direction:row;
-      overflow-x:auto;
-      overflow-y:hidden;
+      align-items:center;
+      overflow:visible;
       border-right:none;
       border-bottom:1px solid var(--hairline);
-      padding:10px 14px;
+      padding:8px 128px 8px 14px;
       background:var(--paper);
       z-index:5;
-      gap:4px;
     }
     .sidenav .eyebrow{ display:none; }
-    .sidenav a{ white-space:nowrap; }
+    .section-picker{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      max-width:100%;
+      min-height:40px;
+      padding:8px 12px 8px 14px;
+      border:1px solid var(--hairline-strong);
+      border-radius:999px;
+      background:var(--card);
+      color:var(--ink);
+      font-family:"IBM Plex Mono", monospace;
+      font-size:13px;
+      font-weight:600;
+      cursor:pointer;
+      box-shadow:var(--shadow);
+    }
+    .section-picker span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .section-picker svg{ width:16px; height:16px; flex:none; transition:transform .15s; }
+    .sidenav.open .section-picker{ background:var(--accent-soft); }
+    .sidenav.open .section-picker svg{ transform:rotate(180deg); }
+    .sidenav-links{
+      position:absolute;
+      top:calc(100% + 4px);
+      left:14px;
+      width:260px;
+      max-width:calc(100% - 28px);
+      max-height:70vh;
+      overflow-y:auto;
+      padding:6px;
+      background:var(--card);
+      border:1px solid var(--hairline-strong);
+      border-radius:10px;
+      box-shadow:var(--popup-ring);
+    }
+    .sidenav:not(.open) .sidenav-links{ display:none; }
+    .sidenav a{ padding:11px 12px; font-size:13.5px; }
   }
 
   .page{
@@ -235,9 +279,11 @@
     background:var(--kpi-accent);
     box-shadow:0 0 10px 1px var(--kpi-accent-glow);
   }
-  .kpi:hover{
-    transform:translateY(-1px);
-    box-shadow:var(--shadow), 0 0 0 1px var(--kpi-accent), 0 8px 22px -10px var(--kpi-accent-glow);
+  @media (hover:hover){
+    .kpi:hover{
+      transform:translateY(-1px);
+      box-shadow:var(--shadow), 0 0 0 1px var(--kpi-accent), 0 8px 22px -10px var(--kpi-accent-glow);
+    }
   }
   .kpi:nth-child(1){ --kpi-accent: var(--kpi-1); --kpi-accent-glow: var(--kpi-1-glow); }
   .kpi:nth-child(2){ --kpi-accent: var(--kpi-2); --kpi-accent-glow: var(--kpi-2-glow); }
@@ -292,7 +338,7 @@
     border-right:1px solid var(--hairline);
   }
   .segmented button:last-child{ border-right:none; }
-  .segmented button:hover{ background:var(--accent-soft); }
+  @media (hover:hover){ .segmented button:hover{ background:var(--accent-soft); } }
   .segmented button.active{
     background:var(--accent);
     color:var(--accent-ink);
@@ -372,7 +418,7 @@
     line-height:1;
     cursor:pointer;
   }
-  .card-toggle:hover{ background:var(--accent-soft); }
+  @media (hover:hover){ .card-toggle:hover{ background:var(--accent-soft); } }
   .card.collapsed > *:not(.card-head){ display:none; }
   .card.collapsed .card-head > *:not(h2){ display:none; }
   .card.collapsed h2 .sub{ display:none; }
@@ -505,7 +551,7 @@
     color:var(--ink-2);
     cursor:pointer;
   }
-  .chip:hover{ background:var(--accent-soft); }
+  @media (hover:hover){ .chip:hover{ background:var(--accent-soft); } }
   .chip.active{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:600; }
 
   .top-list{ display:flex; flex-direction:column; gap:0; }
@@ -577,7 +623,7 @@
     color:var(--ink-2);
     cursor:pointer;
   }
-  .toggle-btn:hover{ background:var(--accent-soft); }
+  @media (hover:hover){ .toggle-btn:hover{ background:var(--accent-soft); } }
 
   footer{
     font-family:"IBM Plex Mono", monospace;
@@ -692,7 +738,7 @@
   .snackbar{
     position:fixed;
     left:50%;
-    bottom:24px;
+    bottom:calc(24px + env(safe-area-inset-bottom, 0px));
     z-index:40;
     width:max-content;
     max-width:calc(100% - 32px);
@@ -793,6 +839,84 @@
   #fetchProgress{ width:100%; margin-top:10px; accent-color:var(--accent); }
   .fetch-progress-text{ font-size:12.5px !important; color:var(--muted) !important; margin-top:4px !important; }
   #fetchConnStatus code{ font-family:"IBM Plex Mono", monospace; font-size:12px; background:var(--accent-soft); padding:1px 5px; border-radius:4px; }
+  /* "Te beoordelen" en "Regels & correcties" */
+  .modal.modal-wide{ max-width:920px; }
+  .review-filter{ align-self:flex-start; }
+  .review-list{ display:flex; flex-direction:column; border-top:1px solid var(--hairline); }
+  .review-row{
+    display:grid; grid-template-columns:auto minmax(120px,1.1fr) minmax(140px,1.4fr) auto;
+    align-items:center; gap:6px 12px; padding:9px 0; border-bottom:1px solid var(--hairline); font-size:13px;
+  }
+  .review-row.rule-row{ grid-template-columns:minmax(120px,1fr) minmax(140px,1.3fr) auto auto; }
+  .review-name{ display:flex; flex-direction:column; min-width:0; }
+  .review-name strong{ font-family:"IBM Plex Mono", monospace; font-size:12.5px; overflow-wrap:anywhere; }
+  .review-meta{ font-size:11.5px; color:var(--muted); }
+  .review-meta.badge{ color:var(--accent); background:var(--accent-soft); border-radius:999px; padding:1px 8px; justify-self:start; }
+  .review-hint{ color:var(--muted); font-size:12.5px; }
+  .review-hint.zeker{ color:var(--ink); }
+  .review-hint small{ font-size:11.5px; color:var(--muted); }
+  .review-edit{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; justify-content:flex-end; }
+  .review-bulk{
+    display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:10px 12px;
+    background:var(--accent-soft); border-radius:10px;
+  }
+  .link-btn.danger{ color:var(--bad); }
+  .rule-form{ display:flex; flex-direction:column; gap:10px; padding:12px 14px; border:1px solid var(--hairline-strong); border-radius:10px; }
+  .rule-fields{ display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; font-size:13px; }
+  .rule-fields input[type=text], .fetch-actions input[type=search]{
+    font:inherit; font-size:13px; padding:5px 8px; border:1px solid var(--hairline-strong); border-radius:6px;
+    background:var(--card); color:var(--ink); text-transform:uppercase;
+  }
+  .fetch-actions input[type=search]{ text-transform:none; min-width:min(200px,100%); }
+  label.inline{ display:inline-flex; align-items:center; gap:5px; font-size:13px; }
+  .rule-preview ul{ margin:6px 0 0; padding-left:18px; font-size:12.5px; line-height:1.6; }
+  .rule-preview li strong{ font-family:"IBM Plex Mono", monospace; font-size:12px; }
+  .rule-preview li.muted{ color:var(--muted); }
+  @media (max-width:640px){
+    .review-row, .review-row.rule-row{ grid-template-columns:auto 1fr; }
+    .review-hint, .review-edit{ grid-column:1 / -1; justify-content:flex-start; }
+  }
+  .snackbar-action{
+    margin-left:12px; border:none; background:none; color:inherit; font:inherit; font-weight:700;
+    text-decoration:underline; cursor:pointer; padding:0;
+  }
+  /* ---------- telefoon / tablet ---------- */
+  .card-head > div{ flex-wrap:wrap; }
+  /* Vegen over de tijd- en trendgrafiek schuift langs de punten; verticaal
+     scrollen en knijpzoomen blijven werken. */
+  #timeChartHost svg, #trendChartHost svg{ touch-action:pan-y pinch-zoom; }
+  @media (max-width:860px){
+    /* Hulp/menu staan vast rechtsboven, in de balk met de sectiekiezer. */
+    .top-actions{ top:9px; right:12px; }
+  }
+  @media (max-width:640px){
+    .page{ padding-inline:14px; padding-block:20px 56px; gap:20px; }
+    .card{ padding:16px 14px 14px; }
+    .filter-row{ padding:12px; }
+    .modal-overlay{ padding:16px 10px; }
+    .modal{ padding:16px 16px 18px; }
+    /* Meest gekocht: rang, naam, aantal en bedrag op de eerste regel; de
+       categorie- (en subcategorie-)keuze eronder over de volle breedte. */
+    .top-row, .top-row.with-sub{ grid-template-columns:24px minmax(0,1fr) auto auto; row-gap:6px; }
+    .top-row > :nth-child(n+5){ grid-column:2 / -1; }
+    .top-row .cat-edit{ max-width:100%; }
+    .top-name{ white-space:normal; overflow-wrap:anywhere; }
+  }
+  /* Vinger i.p.v. muis: grotere tikdoelen (richtlijn ~44px). */
+  @media (pointer:coarse){
+    .segmented button{ padding:10px 14px; font-size:13px; }
+    .chip{ padding:9px 14px; font-size:13px; }
+    .toggle-btn{ padding:10px 14px; font-size:13px; }
+    .help-btn, .menu-btn{ min-height:40px; }
+    .card-toggle{ width:32px; height:32px; font-size:16px; }
+    .cat-edit{ font-size:13.5px; padding:8px; }
+    .period-filter input[type="date"]{ font-size:14px; padding:9px 10px; }
+    .action-menu button{ padding:12px; font-size:14px; }
+    .filter-note button{ padding:6px 8px; margin:-6px -6px -6px 0; }
+    .data-toolbar .account-tag button{ padding:6px 8px; margin:-6px -8px -6px 0; }
+    .category-breakdown .bd-close{ padding:8px; margin:-8px -8px 0 0; }
+    .modal-close{ padding:8px; margin:-8px -8px 0 0; }
+  }
 </style>
 </head>
 <body>
@@ -807,6 +931,8 @@
       <button type="button" role="menuitem" id="fetchStoreBtn">Ophalen bij supermarkt…</button>
       <button type="button" role="menuitem" id="addReceiptsBtn" data-needs-data>Bonnetjes toevoegen</button>
       <button type="button" role="menuitem" id="addAccountBtn" data-needs-data>Account toevoegen</button>
+      <button type="button" role="menuitem" id="reviewBtn" data-needs-data>Te beoordelen</button>
+      <button type="button" role="menuitem" id="rulesBtn" data-needs-data>Regels &amp; correcties</button>
       <button type="button" role="menuitem" id="recategorizeBtn" data-needs-data>Categorieën herberekenen</button>
       <hr data-needs-data>
       <button type="button" role="menuitem" id="exportBackupBtn" data-needs-data>Backup exporteren</button>
@@ -847,6 +973,11 @@
         <p>De categorie van een product wordt vastgelegd bij het importeren. Worden de indelingsregels later verbeterd, dan kun je via het menu (☰ → "Categorieën herberekenen") je bonnetjes opnieuw laten indelen. Je ziet eerst welke producten veranderen; categorieën die je zelf hebt aangepast blijven altijd behouden.</p>
       </div>
       <div>
+        <h3>Indeling bijsturen</h3>
+        <p>Via ☰ → "Te beoordelen" zie je alle producten die nog niet (helemaal) zijn ingedeeld, met een voorstel per product. Neem voorstellen één voor één, per selectie of allemaal tegelijk over. Met de extensie kun je ook AH's eigen productindeling ophalen; dat werkt voor bonnetjes die je via de extensie hebt opgehaald (oudere bonnetjes eventueel opnieuw ophalen).</p>
+        <p>Via ☰ → "Regels &amp; correcties" maak je eigen trefwoordregels (bijv. alles met ‘KIP’ → vlees) met een voorbeeld van wat er verandert, en ruim je overbodige correcties op. Beweeg met de muis over (of tik op) een productnaam bij "Meest gekocht" om te zien waarom het in een categorie staat.</p>
+      </div>
+      <div>
         <h3>Meerdere huisgenoten</h3>
         <p>Woon je met meer mensen die ook bij AH boodschappen doen? Voeg iedereen als los <strong>account</strong> toe (met een eigen naam) via het menu (☰ → "Account toevoegen") — het dashboard telt alles automatisch bij elkaar op en je kunt per persoon filteren.</p>
       </div>
@@ -855,6 +986,26 @@
         <p>Alle data blijft in je eigen browser (IndexedDB). Er is geen server die je bonnetjes ontvangt, verwerkt of bewaart — niets wordt ergens anders opgeslagen of gedeeld. Haal je bonnetjes op via de extensie, dan praat die rechtstreeks met AH; je AH-sessie staat alleen in de opslag van de extensie.</p>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="reviewOverlay" hidden>
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="reviewTitle">
+    <div class="modal-head">
+      <h2 id="reviewTitle">Te beoordelen</h2>
+      <button class="modal-close" id="reviewCloseBtn" type="button" aria-label="Sluiten">×</button>
+    </div>
+    <div class="modal-body" id="reviewBody"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="rulesOverlay" hidden>
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="rulesTitle">
+    <div class="modal-head">
+      <h2 id="rulesTitle">Regels &amp; correcties</h2>
+      <button class="modal-close" id="rulesCloseBtn" type="button" aria-label="Sluiten">×</button>
+    </div>
+    <div class="modal-body" id="rulesBody"></div>
   </div>
 </div>
 
@@ -903,13 +1054,19 @@
 <div class="layout">
   <nav class="sidenav" id="sidenav" aria-label="Secties">
     <div class="eyebrow">Secties</div>
-    <a href="#section-overview">Overzicht</a>
-    <a href="#section-time">Uitgaven over tijd</a>
-    <a href="#section-category">Uitgaven per categorie</a>
-    <a href="#section-subcategory">Subcategorieën</a>
-    <a href="#section-trend">Categorietrend</a>
-    <a href="#section-top-products">Meest gekocht</a>
-    <a href="#section-transactions">Alle transacties</a>
+    <button type="button" class="section-picker" id="sectionPickerBtn" aria-haspopup="true" aria-expanded="false" aria-controls="sidenavLinks">
+      <span id="sectionPickerLabel">Overzicht</span>
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+    </button>
+    <div class="sidenav-links" id="sidenavLinks">
+      <a href="#section-overview">Overzicht</a>
+      <a href="#section-time">Uitgaven over tijd</a>
+      <a href="#section-category">Uitgaven per categorie</a>
+      <a href="#section-subcategory">Subcategorieën</a>
+      <a href="#section-trend">Categorietrend</a>
+      <a href="#section-top-products">Meest gekocht</a>
+      <a href="#section-transactions">Alle transacties</a>
+    </div>
   </nav>
 
   <div class="page">

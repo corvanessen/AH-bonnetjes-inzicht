@@ -219,34 +219,32 @@ import { showSnackbar } from "./lib/snackbar";
       .sort(function(a,b){ return a.start - b.start; });
   }
 
-  // Voortschrijdend 7-daags gemiddelde: elke kalenderdag in de volledige
-  // periode krijgt een punt (ook dagen zonder bon tellen als €0), zodat het
-  // gemiddelde de werkelijke tijdsverdeling volgt in plaats van alleen de
-  // dagen waarop iets gekocht is.
-  function rolling7DayAvg(bonnen){
+  // 7-daags gemiddelde per ISO-week: één punt per weeknummer (ook weken
+  // zonder bon, als €0), met als waarde het gemiddelde bedrag per dag in die
+  // week. De eerste en laatste week tellen alleen de dagen binnen de periode
+  // van de eerste t/m laatste bon mee, zodat een halve week niet onterecht
+  // laag uitvalt.
+  function weeklyDayAvg(bonnen){
     if (!bonnen.length) return [];
-    var perDag = {};
-    bonnen.forEach(function(b){ perDag[b.datum] = (perDag[b.datum] || 0) + (b.totaal || 0); });
-    var dagen = Object.keys(perDag).sort();
+    var perWeek = {};
+    var dagen = [];
+    bonnen.forEach(function(b){
+      var wk = isoWeekKey(b.datum);
+      perWeek[wk] = (perWeek[wk] || 0) + (b.totaal || 0);
+      dagen.push(b.datum);
+    });
+    dagen.sort();
     var eerste = parseISODate(dagen[0]);
     var laatste = parseISODate(dagen[dagen.length - 1]);
-    var aantalDagen = Math.round((laatste - eerste) / 86400000) + 1;
-    var reeks = [];
-    for (var i = 0; i < aantalDagen; i++){
-      var d = new Date(eerste);
-      d.setUTCDate(d.getUTCDate() + i);
-      reeks.push(perDag[toISODateString(d)] || 0);
-    }
-    var venster = 7;
-    var som = 0;
     var rows = [];
-    for (i = 0; i < reeks.length; i++){
-      som += reeks[i];
-      if (i >= venster) som -= reeks[i - venster];
-      var n = Math.min(i + 1, venster);
-      var d2 = new Date(eerste);
-      d2.setUTCDate(d2.getUTCDate() + i);
-      rows.push({ start: d2, totaal: som / n });
+    for (var start = weekStartDate(dagen[0]); start <= laatste; start = new Date(start.getTime() + 7 * 86400000)){
+      var eind = new Date(start.getTime() + 6 * 86400000);
+      var van = start < eerste ? eerste : start;
+      var tot = eind > laatste ? laatste : eind;
+      var n = Math.round((tot - van) / 86400000) + 1;
+      var iso = toISODateString(start);
+      var wk = isoWeekKey(iso);
+      rows.push({ key: wk, start: start, totaal: (perWeek[wk] || 0) / n });
     }
     return rows;
   }
@@ -312,14 +310,50 @@ import { showSnackbar } from "./lib/snackbar";
   // ---------- tooltip ----------
 
   var tooltipEl = document.getElementById("tooltip");
+  // Opruimfunctie van de grafiek die nu een tooltip toont (crosshair e.d.),
+  // zodat een tik elders of scrollen ook die weer verbergt.
+  var tooltipCleanup = null;
   function showTooltip(x, y, html){
     tooltipEl.innerHTML = "";
     html(tooltipEl);
-    tooltipEl.style.left = x + "px";
-    tooltipEl.style.top = (y - 10) + "px";
+    // Binnen het scherm houden: de tooltip staat gecentreerd boven (x, y),
+    // dus op een smal scherm zou hij bij de randen anders wegvallen.
+    var w = tooltipEl.offsetWidth, h = tooltipEl.offsetHeight, rand = 8;
+    var maxX = window.innerWidth - w/2 - rand;
+    tooltipEl.style.left = Math.max(w/2 + rand, Math.min(maxX, x)) + "px";
+    tooltipEl.style.top = Math.max(h + rand, y - 10) + "px";
     tooltipEl.classList.add("show");
   }
-  function hideTooltip(){ tooltipEl.classList.remove("show"); }
+  function hideTooltip(){
+    tooltipEl.classList.remove("show");
+    if (tooltipCleanup){ var f = tooltipCleanup; tooltipCleanup = null; f(); }
+  }
+
+  // Muis: tooltip volgt de cursor en verdwijnt bij verlaten. Touch: een tik of
+  // horizontaal vegen toont hem en hij blijft staan tot je ergens anders tikt
+  // of scrolt (bij touch komt pointerleave direct na het loslaten).
+  function bindPointerTooltip(target, onPoint, cleanup){
+    target.addEventListener("pointerdown", function(ev){
+      if (ev.pointerType === "touch"){ onPoint(ev); tooltipCleanup = cleanup; }
+    });
+    target.addEventListener("pointermove", function(ev){ onPoint(ev); tooltipCleanup = cleanup; });
+    target.addEventListener("pointerleave", function(ev){
+      if (ev.pointerType !== "touch") hideTooltip();
+    });
+  }
+  document.addEventListener("pointerdown", function(ev){
+    if (ev.pointerType === "touch" && tooltipEl.classList.contains("show")) hideTooltip();
+  }, true);
+  window.addEventListener("scroll", function(){
+    if (tooltipEl.classList.contains("show")) hideTooltip();
+  }, { passive: true });
+
+  // Balkgrafieken: bij touch geen tooltip (een tik filtert al, en het bedrag
+  // staat naast de balk), alleen met de muis.
+  function bindHoverTooltip(target, onPoint){
+    target.addEventListener("pointermove", function(ev){ if (ev.pointerType !== "touch") onPoint(ev); });
+    target.addEventListener("pointerleave", function(ev){ if (ev.pointerType !== "touch") hideTooltip(); });
+  }
 
   function ttRow(container, label, value, swatchColor){
     var row = document.createElement("div");
@@ -354,6 +388,31 @@ import { showSnackbar } from "./lib/snackbar";
     for (var k in attrs) e.setAttribute(k, attrs[k]);
     return e;
   }
+  // Grafieken tekenen we op de werkelijke breedte van hun container (1 eenheid
+  // = 1 CSS-pixel), zodat tekst op een telefoon niet mee-krimpt zoals bij een
+  // vaste viewBox van 800 breed. Ingeklapte/verborgen containers (breedte 0)
+  // krijgen de oude breedte; de ResizeObserver tekent opnieuw zodra ze zichtbaar worden.
+  function chartWidth(host, max){
+    var cs = getComputedStyle(host);
+    var w = host.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    if (!(w > 0)) return max;
+    return Math.max(260, Math.min(max, Math.floor(w)));
+  }
+  // Labelkolom van een balkgrafiek: op smalle schermen een kleiner deel van de breedte.
+  function labelMargin(W, ideaal){
+    return Math.min(ideaal, Math.round(W * 0.36));
+  }
+  // Grove afkapping op basis van ~6,4px per teken (12px IBM Plex Sans).
+  function fitLabel(text, maxPx){
+    var maxChars = Math.max(4, Math.floor(maxPx / 6.4));
+    return text.length > maxChars ? text.slice(0, maxChars - 1) + "…" : text;
+  }
+  // Volledige naam voor schermlezers, ook als het zichtbare label is afgekapt.
+  function svgTitle(g, text){
+    g.setAttribute("role", "button");
+    g.setAttribute("aria-label", text);
+  }
+
   function niceMax(v){
     if (v <= 0) return 10;
     var mag = Math.pow(10, Math.floor(Math.log10(v)));
@@ -367,7 +426,8 @@ import { showSnackbar } from "./lib/snackbar";
   // spreiding valt) zodat een grafiek over meerdere jaren het jaartal toont
   // op de plek waar het wisselt, in plaats van bij elk tickje.
   function renderXAsLabels(svg, rows, x, W, H){
-    var stap = rows.length > 8 ? Math.ceil(rows.length / 8) : 1;
+    var maxLabels = Math.max(3, Math.min(8, Math.floor(W / 90)));
+    var stap = rows.length > maxLabels ? Math.ceil(rows.length / maxLabels) : 1;
     var vorigJaar = null;
     rows.forEach(function(r, i){
       var jaar = r.start.getUTCFullYear();
@@ -512,8 +572,8 @@ import { showSnackbar } from "./lib/snackbar";
       sub:"Elke dag met een bon in de gekozen periode",
       titel: function(r){ return fmtDateShort(toISODateString(r.start)); }, rowLabel:"totaal" },
     { key:"7dgem", label:"7d gem.",
-      sub:"Voortschrijdend 7-daags gemiddelde in de gekozen periode",
-      titel: function(r){ return fmtDateShort(toISODateString(r.start)); }, rowLabel:"gemiddeld/dag" },
+      sub:"Gemiddeld bedrag per dag, per weeknummer in de gekozen periode",
+      titel: function(r){ return "week " + Number(r.key.slice(6)) + " (vanaf " + fmtDateShort(toISODateString(r.start)) + ")"; }, rowLabel:"gemiddeld/dag" },
     { key:"maand", label:"Maand",
       sub:"Totaal per maand in de gekozen periode",
       titel: function(r){ return monthLabel(r.key); }, rowLabel:"totaal" }
@@ -538,7 +598,7 @@ import { showSnackbar } from "./lib/snackbar";
   function timeChartRows(mode, bonnen){
     if (mode === "dag") return dailyTotals(bonnen);
     if (mode === "maand") return monthlyTotals(bonnen);
-    return rolling7DayAvg(bonnen);
+    return weeklyDayAvg(bonnen);
   }
 
   function renderTimeChart(){
@@ -552,7 +612,7 @@ import { showSnackbar } from "./lib/snackbar";
       host.innerHTML = '<div class="empty-note">Geen bonnen in deze periode.</div>';
       return;
     }
-    var W = 800, H = 260, M = {top:16, right:20, bottom:30, left:52};
+    var W = chartWidth(host, 800), H = W < 500 ? 220 : 260, M = {top:16, right:W < 500 ? 12 : 20, bottom:30, left:48};
     var innerW = W - M.left - M.right, innerH = H - M.top - M.bottom;
     var maxY = niceMax(Math.max.apply(null, rows.map(function(r){ return r.totaal; })) * 1.15);
     var x = function(i){ return M.left + (rows.length === 1 ? innerW/2 : i/(rows.length-1)*innerW); };
@@ -603,9 +663,8 @@ import { showSnackbar } from "./lib/snackbar";
     // punt: bij honderden punten (dag/7-daags-gemiddelde) zijn individuele
     // hitvlakken te smal om te raken; hier bepalen we het dichtstbijzijnde
     // punt op basis van de muispositie.
-    var overlay = el("rect", {x:M.left, y:M.top, width:innerW, height:innerH, class:"hit"});
-    overlay.addEventListener("pointermove", function(ev){ showNearest(ev); });
-    overlay.addEventListener("pointerleave", function(){ hideTooltip(); cross.style.opacity=0; hoverDot.style.opacity=0; });
+    var overlay = el("rect", {x:M.left, y:M.top, width:innerW, height:innerH, class:"hit scrub"});
+    bindPointerTooltip(overlay, showNearest, function(){ cross.style.opacity=0; hoverDot.style.opacity=0; });
     svg.appendChild(overlay);
 
     function showNearest(ev){
@@ -641,7 +700,8 @@ import { showSnackbar } from "./lib/snackbar";
       host.innerHTML = '<div class="empty-note">Geen artikelen in deze periode.</div>';
       return;
     }
-    var rowH = 30, W = 800, M = {top:6, right:70, bottom:6, left:150};
+    var W = chartWidth(host, 800);
+    var rowH = 30, M = {top:6, right:70, bottom:6, left:labelMargin(W, 150)};
     var H = totals.length * rowH + M.top + M.bottom;
     var innerW = W - M.left - M.right;
     var maxV = niceMax(totals[0].bedrag * 1.1);
@@ -656,8 +716,9 @@ import { showSnackbar } from "./lib/snackbar";
       if (state.tableCategory && !selected) g.classList.add("dim");
       if (selected) g.classList.add("selected");
 
+      svgTitle(g, t.categorie + ": " + fmtEUR(t.bedrag));
       var label = el("text", {x:M.left-10, y:cy+rowH/2+4, class:"cat-label", "text-anchor":"end"});
-      label.textContent = t.categorie;
+      label.textContent = fitLabel(t.categorie, M.left - 14);
       g.appendChild(label);
 
       var barW = Math.max(2, xScale(t.bedrag));
@@ -685,7 +746,7 @@ import { showSnackbar } from "./lib/snackbar";
       g.addEventListener("keydown", function(ev){
         if (ev.key === "Enter" || ev.key === " "){ ev.preventDefault(); g.dispatchEvent(new Event("click")); }
       });
-      g.addEventListener("pointermove", function(ev){
+      bindHoverTooltip(g, function(ev){
         var rect = svg.getBoundingClientRect();
         var scale = rect.width / W;
         showTooltip(ev.clientX, rect.top + cy*scale, function(c){
@@ -693,7 +754,6 @@ import { showSnackbar } from "./lib/snackbar";
           ttRow(c, "uitgegeven", fmtEUR(t.bedrag), categoryColor(t.categorie));
         });
       });
-      g.addEventListener("pointerleave", hideTooltip);
 
       svg.appendChild(g);
     });
@@ -733,7 +793,8 @@ import { showSnackbar } from "./lib/snackbar";
       host.appendChild(hint);
     }
 
-    var rowH = 28, W = 360, M = {top:4, right:64, bottom:4, left:96};
+    var W = chartWidth(host, 360);
+    var rowH = 28, M = {top:4, right:64, bottom:4, left:labelMargin(W, 120)};
     var H = subs.length * rowH + M.top + M.bottom;
     var innerW = W - M.left - M.right;
     var maxV = niceMax(subs[0].bedrag * 1.1);
@@ -749,8 +810,9 @@ import { showSnackbar } from "./lib/snackbar";
       if (state.tableSubcategory && !selected) g.classList.add("dim");
       if (selected) g.classList.add("selected");
 
+      svgTitle(g, s.subcategorie + ": " + fmtEUR(s.bedrag));
       var label = el("text", {x:M.left-8, y:cy+rowH/2+4, class:"cat-label", "text-anchor":"end"});
-      label.textContent = s.subcategorie;
+      label.textContent = fitLabel(s.subcategorie, M.left - 12);
       g.appendChild(label);
 
       var barW = Math.max(2, xScale(s.bedrag));
@@ -780,7 +842,7 @@ import { showSnackbar } from "./lib/snackbar";
       g.addEventListener("keydown", function(ev){
         if (ev.key === "Enter" || ev.key === " "){ ev.preventDefault(); g.dispatchEvent(new Event("click")); }
       });
-      g.addEventListener("pointermove", function(ev){
+      bindHoverTooltip(g, function(ev){
         var rect = svg.getBoundingClientRect();
         var scale = rect.width / W;
         showTooltip(ev.clientX, rect.top + cy*scale, function(c){
@@ -788,7 +850,6 @@ import { showSnackbar } from "./lib/snackbar";
           ttRow(c, "uitgegeven", fmtEUR(s.bedrag), baseColor);
         });
       });
-      g.addEventListener("pointerleave", hideTooltip);
 
       svg.appendChild(g);
     });
@@ -830,7 +891,8 @@ import { showSnackbar } from "./lib/snackbar";
       host.innerHTML = '<div class="empty-note">Geen artikelen in deze periode.</div>';
       return;
     }
-    var rowH = 30, W = 800, M = {top:6, right:70, bottom:6, left:190};
+    var W = chartWidth(host, 800);
+    var rowH = 30, M = {top:6, right:70, bottom:6, left:labelMargin(W, 190)};
     var H = subs.length * rowH + M.top + M.bottom;
     var innerW = W - M.left - M.right;
     var maxV = niceMax(subs[0].bedrag * 1.1);
@@ -844,8 +906,11 @@ import { showSnackbar } from "./lib/snackbar";
       var g = el("g", {class:"bar-row", tabindex:"0"});
       if (selected) g.classList.add("selected");
 
+      svgTitle(g, s.subcategorie + " (" + s.categorie + "): " + fmtEUR(s.bedrag));
       var label = el("text", {x:M.left-10, y:cy+rowH/2+4, class:"cat-label", "text-anchor":"end"});
-      label.textContent = s.subcategorie + " (" + s.categorie + ")";
+      // Smal scherm: liever de subcategorie volledig dan "(categorie)" erachter.
+      var volledig = s.subcategorie + " (" + s.categorie + ")";
+      label.textContent = fitLabel(volledig.length * 6.4 <= M.left - 14 ? volledig : s.subcategorie, M.left - 14);
       g.appendChild(label);
 
       var color = categoryColor(s.categorie);
@@ -879,7 +944,7 @@ import { showSnackbar } from "./lib/snackbar";
       g.addEventListener("keydown", function(ev){
         if (ev.key === "Enter" || ev.key === " "){ ev.preventDefault(); g.dispatchEvent(new Event("click")); }
       });
-      g.addEventListener("pointermove", function(ev){
+      bindHoverTooltip(g, function(ev){
         var rect = svg.getBoundingClientRect();
         var scale = rect.width / W;
         showTooltip(ev.clientX, rect.top + cy*scale, function(c){
@@ -887,7 +952,6 @@ import { showSnackbar } from "./lib/snackbar";
           ttRow(c, "uitgegeven", fmtEUR(s.bedrag), color);
         });
       });
-      g.addEventListener("pointerleave", hideTooltip);
 
       svg.appendChild(g);
     });
@@ -930,7 +994,7 @@ import { showSnackbar } from "./lib/snackbar";
       return (naam === "overig" || naam === OVERIG_LABEL) ? "var(--muted)" : categoryColor(naam);
     };
 
-    var W = 800, H = 280, M = {top:16, right:20, bottom:30, left:52};
+    var W = chartWidth(host, 800), H = W < 500 ? 230 : 280, M = {top:16, right:W < 500 ? 12 : 20, bottom:30, left:48};
     var innerW = W - M.left - M.right, innerH = H - M.top - M.bottom;
     var maxTotal = 0;
     rows.forEach(function(r){
@@ -969,23 +1033,23 @@ import { showSnackbar } from "./lib/snackbar";
       svg.appendChild(el("path", {d:path, fill:color, "fill-opacity":0.75}));
     });
 
-    // crosshair + hit areas per week column
+    // crosshair + één overlay over de hele breedte; het dichtstbijzijnde
+    // tijdvak volgt uit de pointerpositie (zoals bij de tijdgrafiek), zodat
+    // vegen met een vinger ook langs de kolommen schuift.
     var cross = el("line", {x1:0,x2:0,y1:M.top,y2:M.top+innerH, class:"crosshair"});
     svg.appendChild(cross);
-    rows.forEach(function(r,i){
-      var hit = el("rect", {x:x(i)-Math.max(14, innerW/rows.length/2), y:M.top, width:Math.max(28, innerW/rows.length), height:innerH, class:"hit"});
-      hit.addEventListener("pointerenter", function(ev){ showStack(ev,i); });
-      hit.addEventListener("pointermove", function(ev){ showStack(ev,i); });
-      hit.addEventListener("pointerleave", function(){ hideTooltip(); cross.style.opacity=0; });
-      svg.appendChild(hit);
-    });
+    var overlay = el("rect", {x:M.left, y:M.top, width:innerW, height:innerH, class:"hit scrub"});
+    bindPointerTooltip(overlay, showStack, function(){ cross.style.opacity=0; });
+    svg.appendChild(overlay);
 
-    function showStack(ev, i){
+    function showStack(ev){
+      var rect = svg.getBoundingClientRect();
+      var scale = rect.width / W;
+      var frac = rows.length === 1 ? 0 : ((ev.clientX - rect.left) / scale - M.left) / innerW;
+      var i = Math.max(0, Math.min(rows.length - 1, Math.round(frac * (rows.length - 1))));
       cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i));
       cross.style.opacity = 1;
       var r = rows[i];
-      var rect = svg.getBoundingClientRect();
-      var scale = rect.width / W;
       showTooltip(rect.left + x(i)*scale, rect.top + M.top*scale, function(c){
         ttTitle(c, modeCfg.titel(r.start));
         series.slice().forEach(function(s, si){
@@ -1086,6 +1150,13 @@ import { showSnackbar } from "./lib/snackbar";
       DATA = data;
       buildCategoryColorMap();
       renderAll();
+      // Snelactie: dezelfde keuze als regel vastleggen, zodat vergelijkbare
+      // producten (nu en op toekomstige bonnetjes) meteen meegaan.
+      if (store.maakRegel){
+        showSnackbar(omschrijving + " staat nu bij " + categorie + ".", {
+          action: { label: "Regel maken…", onClick: function(){ store.maakRegel(omschrijving, categorie); } },
+        });
+      }
     }).catch(function(err){
       showSnackbar("Opslaan mislukt: " + err.message, { error: true });
       select.disabled = false;
@@ -1175,6 +1246,13 @@ import { showSnackbar } from "./lib/snackbar";
       var rank = document.createElement("div"); rank.className="top-rank"; rank.textContent = String(i+1).padStart(2,"0");
       var name = document.createElement("div"); name.className="top-name";
       name.textContent = p.omschrijving;
+      // Waarom staat dit product in deze categorie? (correctie, trefwoord, eigen regel, AH)
+      // Met de muis via title; op een touchscreen (geen hover) via een tik.
+      if (store && store.uitleg){
+        var uitleg = store.uitleg(p.omschrijving, p.keer ? p.totaal / p.keer : null);
+        name.title = uitleg;
+        name.addEventListener("click", function(){ showSnackbar(p.omschrijving + " — " + uitleg); });
+      }
       var count = document.createElement("div"); count.className="top-count"; count.textContent = p.keer + "x";
       var amount = document.createElement("div"); amount.className="top-amount"; amount.textContent = fmtEUR(p.totaal);
       var editHost = document.createElement("div");
@@ -1303,9 +1381,33 @@ import { showSnackbar } from "./lib/snackbar";
       .filter(Boolean);
     if (!sections.length) return;
 
+    // Op smalle schermen: sectiekiezer (knop met de huidige sectie + uitklaplijst).
+    var nav = document.getElementById("sidenav");
+    var pickerBtn = document.getElementById("sectionPickerBtn");
+    var pickerLabel = document.getElementById("sectionPickerLabel");
+    function setPickerOpen(open){
+      nav.classList.toggle("open", open);
+      pickerBtn.setAttribute("aria-expanded", String(open));
+    }
+    pickerBtn.addEventListener("click", function(){ setPickerOpen(!nav.classList.contains("open")); });
+    links.forEach(function(a){ a.addEventListener("click", function(){ setPickerOpen(false); }); });
+    document.addEventListener("click", function(ev){
+      if (nav.classList.contains("open") && !nav.contains(ev.target)) setPickerOpen(false);
+    });
+    document.addEventListener("keydown", function(ev){
+      if (ev.key === "Escape" && nav.classList.contains("open")){ setPickerOpen(false); pickerBtn.focus(); }
+    });
+
     function setActive(id){
       links.forEach(function(a){
-        a.classList.toggle("active", a.getAttribute("href") === "#" + id);
+        var actief = a.getAttribute("href") === "#" + id;
+        a.classList.toggle("active", actief);
+        if (actief){
+          a.setAttribute("aria-current", "true");
+          pickerLabel.textContent = a.textContent;
+        } else {
+          a.removeAttribute("aria-current");
+        }
       });
     }
 
@@ -1343,10 +1445,51 @@ import { showSnackbar } from "./lib/snackbar";
     }, { passive: true });
   }
 
+  // ---------- opnieuw tekenen bij andere breedte ----------
+
+  // Grafieken worden op hun containerbreedte getekend (zie chartWidth), dus
+  // bij draaien van de telefoon, venster verbreden of een kaart uitklappen
+  // tekenen we die grafiek opnieuw. Alleen breedte telt: hoogte verandert
+  // door het tekenen zelf.
+  function initChartResize(){
+    if (!("ResizeObserver" in window)) return;
+    var renderers = {
+      timeChartHost: function(){ renderTimeChart(); },
+      categoryChartHost: function(){ renderCategoryChart(); },
+      categoryBreakdownHost: function(){ renderCategoryBreakdown(); },
+      subcategoryChartHost: function(){ renderSubcategoryChart(); },
+      trendChartHost: function(){ renderTrendChart(); }
+    };
+    var breedtes = {}, teDoen = {}, timer = null;
+    var ro = new ResizeObserver(function(entries){
+      entries.forEach(function(entry){
+        var id = entry.target.id;
+        var w = Math.round(entry.contentRect.width);
+        if (breedtes[id] === undefined){ breedtes[id] = w; return; }
+        if (w === breedtes[id]) return;
+        breedtes[id] = w;
+        if (w > 0) teDoen[id] = true;
+      });
+      clearTimeout(timer);
+      timer = setTimeout(function(){
+        if (!DATA) return;
+        var ids = Object.keys(teDoen);
+        teDoen = {};
+        hideTooltip();
+        ids.forEach(function(id){ renderers[id](); });
+      }, 120);
+    });
+    Object.keys(renderers).forEach(function(id){
+      var host = document.getElementById(id);
+      if (host) ro.observe(host);
+    });
+  }
+
   // ---------- wire up ----------
 
   initCollapsibleCards();
   initSidenav();
+  initChartResize();
 
   document.getElementById("toggleTable").addEventListener("click", function(){
     var wrap = document.getElementById("tableWrap");

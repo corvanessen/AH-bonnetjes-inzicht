@@ -33,7 +33,8 @@ interface RawMoney {
   amount: number;
 }
 interface RawProduct {
-  id?: string;
+  // AH's interne "hqId": in de API een getal, in oudere exports soms een string.
+  id?: string | number;
   quantity?: number;
   name?: string;
   price?: RawMoney;
@@ -105,7 +106,7 @@ export function parseJsonReceipt(ruw: RawReceipt, bestand: string): { bon: Bon; 
       omschrijving: (product.name ?? "").trim(),
       categorie: null,
       subcategorie: null,
-      product_id: product.id ?? null,
+      product_id: product.id != null ? String(product.id) : null,
       aantal_weergave: String(aantal),
       aantal: aantal,
       stukprijs,
