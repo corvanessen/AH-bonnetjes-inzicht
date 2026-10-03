@@ -437,14 +437,31 @@ recategorizeBtn.addEventListener("click", async () => {
 
 exportBackupBtn.addEventListener("click", async () => {
   const backup = await db.exportBackup();
+  const naam = `boodschappenledger-backup-${new Date().toISOString().slice(0, 10)}.json`;
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+
+  // Op een telefoon is delen (naar Drive, mail, chat…) handiger dan een download
+  // die ergens in een map verdwijnt; zo zet je ook een backup van je computer
+  // over naar je telefoon of andersom.
+  const bestand = new File([blob], naam, { type: "application/json" });
+  const kanDelen = matchMedia("(pointer: coarse)").matches && navigator.canShare?.({ files: [bestand] });
+  if (kanDelen) {
+    try {
+      await navigator.share({ files: [bestand], title: "Boodschappenledger-backup" });
+      return;
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return;
+      // Delen mislukt om een andere reden: val terug op downloaden.
+    }
+  }
+
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `boodschappenledger-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = naam;
   a.click();
   URL.revokeObjectURL(url);
-  showSnackbar(`Backup gedownload als ${a.download}.`);
+  showSnackbar(`Backup gedownload als ${naam}.`);
 });
 
 importBackupBtn.addEventListener("click", () => importBackupInput.click());
@@ -552,3 +569,9 @@ document.addEventListener("keydown", (ev) => {
 });
 
 refresh();
+
+// Installeerbaar + offline bruikbaar (zie public/sw.js). Niet in de dev-server,
+// anders serveert de cache oude modules tijdens het ontwikkelen.
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  navigator.serviceWorker.register("./sw.js").catch((err) => console.warn("Service worker niet geregistreerd:", err));
+}
