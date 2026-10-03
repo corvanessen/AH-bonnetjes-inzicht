@@ -101,3 +101,47 @@ export function fetchReceipts(
     });
   });
 }
+
+export interface AhProductInfo {
+  id: string;
+  ahCategorie: string | null;
+  ahSubcategorie: string | null;
+}
+
+/**
+ * Vraagt via de extensie AH's eigen categorie op voor producten van de bon
+ * (id = hqId op de bon, naam = bonomschrijving). Geen AH-login nodig.
+ */
+export function fetchProductCategories(
+  items: { id: string; name: string }[],
+  onProduct: (info: AhProductInfo, done: number) => void,
+): Promise<{ error?: string }> {
+  return new Promise((resolve) => {
+    let done = 0;
+    const id = post("products", { items });
+    // Een oudere extensie (< 0.2.0) kent dit bericht niet en antwoordt nooit.
+    let timer = 0;
+    const wacht = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        handlers.delete(id);
+        resolve({ error: "geen antwoord van de extensie — werk de extensie bij naar versie 0.2.0 of nieuwer" });
+      }, 20000);
+    };
+    wacht();
+    handlers.set(id, ({ event }) => {
+      if (!event) return;
+      wacht();
+      const ev = event as { type: string; data?: AhProductInfo; message?: string };
+      if (ev.type === "product" && ev.data) {
+        onProduct(ev.data, ++done);
+      } else if (ev.type !== "product") {
+        window.clearTimeout(timer);
+        handlers.delete(id);
+        if (ev.type === "error") resolve({ error: ev.message });
+        else if (ev.type === "closed" && done < items.length) resolve({ error: "verbinding met de extensie verbroken" });
+        else resolve({});
+      }
+    });
+  });
+}

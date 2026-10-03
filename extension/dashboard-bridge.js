@@ -25,6 +25,18 @@
       return;
     }
 
+    if (req.type === "products") {
+      const port = chrome.runtime.connect({ name: "products" });
+      port.onMessage.addListener((ev) => {
+        send({ id: req.id, event: ev });
+        if (ev.type === "done" || ev.type === "error") port.disconnect();
+      });
+      port.onDisconnect.addListener(() => send({ id: req.id, event: { type: "closed" } }));
+      const items = Array.isArray(req.items) ? req.items : [];
+      port.postMessage({ items: items.map((i) => ({ id: String(i?.id ?? ""), name: String(i?.name ?? "") })) });
+      return;
+    }
+
     if (!["ping", "status", "login", "logout"].includes(req.type)) return;
     chrome.runtime.sendMessage({ type: req.type, account: String(req.account ?? "") }, (resp) => {
       const err = chrome.runtime.lastError;

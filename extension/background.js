@@ -93,6 +93,55 @@ async function apiRequest(path, body, accessToken) {
   return text ? JSON.parse(text) : {};
 }
 
+async function apiGet(path, accessToken) {
+  await rulesReady;
+  const resp = await fetch(API + path, {
+    headers: {
+      Accept: "application/json",
+      "x-client-name": CLIENT_ID,
+      "x-client-version": CLIENT_VERSION,
+      "x-application": "AHWEBSHOP",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    credentials: "omit",
+  });
+  if (!resp.ok) {
+    const err = new Error(`AH gaf ${resp.status}`);
+    err.status = resp.status;
+    throw err;
+  }
+  return resp.json();
+}
+
+// Productinformatie is openbaar: een anoniem token volstaat, dus geen login nodig.
+let anonToken = null;
+async function anonymousToken(forceNew = false) {
+  if (!anonToken || forceNew || anonToken.expires_at - 60_000 < Date.now()) {
+    const tok = await apiRequest("/mobile-auth/v1/auth/token/anonymous", { clientId: "appie" });
+    anonToken = { value: tok.access_token, expires_at: Date.now() + (tok.expires_in ?? 3600) * 1000 };
+  }
+  return anonToken.value;
+}
+
+/**
+ * AH's eigen categorie voor een product van de bon. Het id op de bon is AH's
+ * interne "hqId"; daar is geen directe opzoeking voor, dus zoeken we op de
+ * (afgekapte) bonnaam en nemen het resultaat met precies dat hqId. Lukt bij
+ * zo'n 2 op de 3 producten; uit het assortiment verdwenen producten vallen af.
+ */
+async function productCategory(id, name) {
+  const path = `/mobile-services/product/search/v2?sortOn=RELEVANCE&size=30&query=${encodeURIComponent(name)}`;
+  let data;
+  try {
+    data = await apiGet(path, await anonymousToken());
+  } catch (err) {
+    if (err.status !== 401) throw err;
+    data = await apiGet(path, await anonymousToken(true));
+  }
+  const match = (data.products ?? []).find((p) => String(p.hqId) === String(id));
+  return { id: String(id), ahCategorie: match?.mainCategory ?? null, ahSubcategorie: match?.subCategory ?? null };
+}
+
 async function freshAccessToken(account) {
   const t = await loadTokens(account);
   if (!t) throw new NeedsLogin("Nog niet ingelogd.");
@@ -248,6 +297,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     default:
       return false;
   }
+});
+
+// AH-productcategorieën ophalen via een port, met voortgang per product.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== "products") return;
+  let open = true;
+  port.onDisconnect.addListener(() => (open = false));
+  port.onMessage.addListener(async ({ items = [] }) => {
+    const emit = (ev) => open && port.postMessage(ev);
+    try {
+      for (const { id, name } of items.slice(0, 2000)) {
+        if (!open) return;
+        if (!id || !name) continue;
+        emit({ type: "product", data: await productCategory(id, String(name)) });
+        await sleep(250); // rate limit
+      }
+      emit({ type: "done" });
+    } catch (err) {
+      emit({ type: "error", message: err.message });
+    }
+  });
 });
 
 // Bonnetjes ophalen via een port, zodat voortgang per bon doorgegeven kan worden.

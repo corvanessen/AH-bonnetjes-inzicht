@@ -1,6 +1,8 @@
 import { buildDashboardData } from "./lib/buildDashboardData";
 import * as db from "./lib/db";
-import { enrichAccount, recategorize } from "./lib/enrich";
+import { enrichAccount, recategorize, type CategorieContext } from "./lib/enrich";
+import { vertaalAh } from "./lib/ahTaxonomie";
+import type { GebruikersRegel } from "./lib/categorize";
 import { parseJsonReceipts } from "./lib/jsonParser";
 import { parseLidlImages } from "./lib/lidlOcrParser";
 import { parsePdfReceipts } from "./lib/pdfParser";
@@ -13,6 +15,7 @@ import { sanitizeAccountData } from "./lib/validate";
 // is this module's job.
 import { initDashboard, setStore } from "./dashboard.js";
 import { initFetchModal } from "./fetchModal";
+import { initCategoriePanels } from "./categoriePanels";
 
 const uploadPanel = document.getElementById("uploadPanel") as HTMLElement;
 const dashboardContent = document.getElementById("dashboardContent") as HTMLElement;
@@ -39,6 +42,8 @@ const exportBackupBtn = document.getElementById("exportBackupBtn") as HTMLButton
 const importBackupBtn = document.getElementById("importBackupBtn") as HTMLButtonElement;
 const importBackupInput = document.getElementById("importBackupInput") as HTMLInputElement;
 const clearAllBtn = document.getElementById("clearAllBtn") as HTMLButtonElement;
+const reviewBtn = document.getElementById("reviewBtn") as HTMLButtonElement;
+const rulesBtn = document.getElementById("rulesBtn") as HTMLButtonElement;
 const helpBtn = document.getElementById("helpBtn") as HTMLButtonElement;
 const helpOverlay = document.getElementById("helpOverlay") as HTMLElement;
 const helpCloseBtn = document.getElementById("helpCloseBtn") as HTMLButtonElement;
@@ -54,6 +59,7 @@ async function refresh(): Promise<void> {
   accounts = await db.getAllAccounts();
 
   const hasData = accounts.length > 0;
+  if (hasData) void db.requestPersistentStorage();
   actionMenu.querySelectorAll<HTMLElement>("[data-needs-data]").forEach((el) => {
     el.hidden = !hasData;
   });
@@ -100,6 +106,7 @@ async function refresh(): Promise<void> {
   // but this is the last line of defense against a bad row crashing the page
   // outright — show a recoverable error state instead of a blank screen.
   try {
+    panels.verversCache(await laadContext());
     const data = await buildData();
     dashboardContent.hidden = false;
     renderErrorPanel.hidden = true;
@@ -118,6 +125,31 @@ async function buildData(): Promise<DashboardData> {
   return buildDashboardData(accounts);
 }
 
+/** Alles wat de indeling bepaalt: correcties, eigen regels en (vertaalde) AH-categorieën. */
+async function laadContext(): Promise<CategorieContext> {
+  const [overrides, subOverrides, regels, ahRijen] = await Promise.all([
+    db.getOverrides(),
+    db.getSubOverrides(),
+    db.getRegels(),
+    db.getAhProducten(),
+  ]);
+  const ahProducten: CategorieContext["ahProducten"] = {};
+  for (const rij of ahRijen) {
+    const vertaald = vertaalAh(rij.ahCategorie, rij.ahSubcategorie);
+    if (vertaald) ahProducten[rij.product_id] = vertaald;
+  }
+  return { overrides, subOverrides, regels, ahProducten };
+}
+
+const panels = initCategoriePanels({
+  getAccounts: () => accounts,
+  laadContext,
+  async naWijziging() {
+    await recategorizeAllAndRebuild();
+    await refresh();
+  },
+});
+
 setStore({
   async saveCategoryOverride(omschrijving: string, categorie: string): Promise<DashboardData> {
     await db.setOverride(omschrijving, categorie);
@@ -127,14 +159,18 @@ setStore({
     await db.setSubOverride(omschrijving, subcategorie);
     return recategorizeAllAndRebuild();
   },
+  // Voor de tooltip "waarom staat dit hier?" en de snelactie "regel maken" in dashboard.js.
+  uitleg: (omschrijving: string, bedrag: number | null) => panels.uitleg(omschrijving, bedrag),
+  maakRegel: (omschrijving: string, categorie: string) => panels.openRegelFormulier(omschrijving, categorie),
 });
 
 async function recategorizeAllAndRebuild(): Promise<DashboardData> {
-  const [overrides, subOverrides] = await Promise.all([db.getOverrides(), db.getSubOverrides()]);
+  const ctx = await laadContext();
   for (const account of accounts) {
-    account.artikelen = recategorize(account.artikelen, overrides, subOverrides);
+    account.artikelen = recategorize(account.artikelen, ctx);
     await db.saveAccount(account);
   }
+  panels.verversCache(ctx);
   return buildData();
 }
 
@@ -271,7 +307,7 @@ async function importIntoAccount(
   const isNew = (r: { bon_id: string }) => keptNewIds.has(r.bon_id);
   const skipped = pdfResult.bonnen.length + jsonResult.bonnen.length - newPdfBonnen.length - newJsonBonnen.length;
 
-  const [overrides, subOverrides] = await Promise.all([db.getOverrides(), db.getSubOverrides()]);
+  const ctx = await laadContext();
   const enriched = enrichAccount(
     account,
     // Old rows go first so they win enrichAccount's bon_id dedup.
@@ -279,8 +315,7 @@ async function importIntoAccount(
     [...oldArtikelen.filter((a) => oldBron.get(a.bon_id) !== "json"), ...pdfResult.artikelen.filter(isNew)],
     [...oldBonnen.filter((b) => b.bron === "json"), ...newJsonBonnen],
     [...oldArtikelen.filter((a) => oldBron.get(a.bon_id) === "json"), ...jsonResult.artikelen.filter(isNew)],
-    overrides,
-    subOverrides,
+    ctx,
   );
   warnings.push(...enriched.warnings);
 
@@ -364,8 +399,8 @@ cancelUploadBtn.addEventListener("click", () => {
 // Eigen aanpassingen (overrides) gaan altijd voor, maar producten die op een
 // trefwoordregel leunen kunnen verschuiven — daarom eerst tonen wat er verandert.
 recategorizeBtn.addEventListener("click", async () => {
-  const [overrides, subOverrides] = await Promise.all([db.getOverrides(), db.getSubOverrides()]);
-  const herberekend = accounts.map((a) => recategorize(a.artikelen, overrides, subOverrides));
+  const ctx = await laadContext();
+  const herberekend = accounts.map((a) => recategorize(a.artikelen, ctx));
 
   const voorbeelden = new Map<string, string>();
   let aantal = 0;
@@ -422,6 +457,8 @@ importBackupInput.addEventListener("change", async () => {
       accounts?: AccountData[];
       overrides?: { omschrijving: string; waarde: string }[];
       subOverrides?: { omschrijving: string; waarde: string }[];
+      regels?: unknown[];
+      ahProducten?: unknown[];
     };
 
     const warnings: string[] = [];
@@ -431,8 +468,18 @@ importBackupInput.addEventListener("change", async () => {
       return sanitized.data;
     });
 
-    await db.importBackup({ ...backup, accounts: sanitizedAccounts });
+    await db.importBackup({
+      accounts: sanitizedAccounts,
+      overrides: schoneOverrides(backup.overrides),
+      subOverrides: schoneOverrides(backup.subOverrides),
+      regels: schoneRegels(backup.regels),
+      ahProducten: schoneAhProducten(backup.ahProducten),
+    });
     if (warnings.length) console.warn(warnings.join("\n"));
+    accounts = await db.getAllAccounts();
+    // Opnieuw indelen met de zojuist geïmporteerde correcties en regels; anders
+    // blijven de categorieën staan zoals ze in de backup zaten.
+    await recategorizeAllAndRebuild();
     await refresh();
     showSnackbar(
       `Backup geimporteerd (${sanitizedAccounts.length} account(s))` +
@@ -444,6 +491,36 @@ importBackupInput.addEventListener("change", async () => {
     importBackupInput.value = "";
   }
 });
+
+const isTekst = (v: unknown, max = 200): v is string => typeof v === "string" && v.length > 0 && v.length <= max;
+
+function schoneOverrides(rows: unknown): { omschrijving: string; waarde: string }[] {
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((r) => isTekst(r?.omschrijving) && isTekst(r?.waarde)).map((r) => ({ omschrijving: r.omschrijving, waarde: r.waarde }));
+}
+
+function schoneRegels(rows: unknown): GebruikersRegel[] {
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .filter((r) => isTekst(r?.id) && isTekst(r?.trefwoord, 40) && isTekst(r?.categorie))
+    .map((r) => ({
+      id: r.id,
+      trefwoord: String(r.trefwoord).toUpperCase(),
+      categorie: r.categorie,
+      subcategorie: isTekst(r.subcategorie) ? r.subcategorie : null,
+    }));
+}
+
+function schoneAhProducten(rows: unknown): db.AhProductRow[] {
+  if (!Array.isArray(rows)) return [];
+  const ofNull = (v: unknown) => (isTekst(v) ? v : null);
+  return rows
+    .filter((r) => isTekst(r?.product_id, 32))
+    .map((r) => ({ product_id: r.product_id, ahCategorie: ofNull(r.ahCategorie), ahSubcategorie: ofNull(r.ahSubcategorie), opgehaald: String(r.opgehaald ?? "") }));
+}
+
+reviewBtn.addEventListener("click", () => panels.openBeoordelen());
+rulesBtn.addEventListener("click", () => panels.openRegels());
 
 clearAllBtn.addEventListener("click", async () => {
   if (!window.confirm("Alle geimporteerde bonnetjes en categorie-aanpassingen in deze browser wissen? Dit kan niet ongedaan worden gemaakt (tenzij je eerst een backup exporteert).")) return;
@@ -467,6 +544,7 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key !== "Escape") return;
   if (!helpOverlay.hidden) closeHelp();
   if (fetchModal.isOpen()) fetchModal.close();
+  panels.sluitAlles();
   if (!actionMenu.hidden) {
     closeMenu();
     menuBtn.focus();

@@ -57,7 +57,12 @@ function sanitizeArtikel(artikel: Artikel): Artikel | null {
     type: artikel.type === "statiegeld" ? "statiegeld" : "product",
     categorie: typeof artikel.categorie === "string" ? artikel.categorie : null,
     subcategorie: typeof artikel.subcategorie === "string" ? artikel.subcategorie : null,
-    product_id: typeof artikel.product_id === "string" ? artikel.product_id : null,
+    product_id:
+      typeof artikel.product_id === "string" && artikel.product_id.length <= 32
+        ? artikel.product_id
+        : typeof artikel.product_id === "number" && Number.isFinite(artikel.product_id)
+          ? String(artikel.product_id)
+          : null,
     aantal_weergave: typeof artikel.aantal_weergave === "string" ? artikel.aantal_weergave : null,
     aantal: finiteOrNull(artikel.aantal),
     stukprijs: finiteOrNull(artikel.stukprijs),

@@ -219,34 +219,32 @@ import { showSnackbar } from "./lib/snackbar";
       .sort(function(a,b){ return a.start - b.start; });
   }
 
-  // Voortschrijdend 7-daags gemiddelde: elke kalenderdag in de volledige
-  // periode krijgt een punt (ook dagen zonder bon tellen als €0), zodat het
-  // gemiddelde de werkelijke tijdsverdeling volgt in plaats van alleen de
-  // dagen waarop iets gekocht is.
-  function rolling7DayAvg(bonnen){
+  // 7-daags gemiddelde per ISO-week: één punt per weeknummer (ook weken
+  // zonder bon, als €0), met als waarde het gemiddelde bedrag per dag in die
+  // week. De eerste en laatste week tellen alleen de dagen binnen de periode
+  // van de eerste t/m laatste bon mee, zodat een halve week niet onterecht
+  // laag uitvalt.
+  function weeklyDayAvg(bonnen){
     if (!bonnen.length) return [];
-    var perDag = {};
-    bonnen.forEach(function(b){ perDag[b.datum] = (perDag[b.datum] || 0) + (b.totaal || 0); });
-    var dagen = Object.keys(perDag).sort();
+    var perWeek = {};
+    var dagen = [];
+    bonnen.forEach(function(b){
+      var wk = isoWeekKey(b.datum);
+      perWeek[wk] = (perWeek[wk] || 0) + (b.totaal || 0);
+      dagen.push(b.datum);
+    });
+    dagen.sort();
     var eerste = parseISODate(dagen[0]);
     var laatste = parseISODate(dagen[dagen.length - 1]);
-    var aantalDagen = Math.round((laatste - eerste) / 86400000) + 1;
-    var reeks = [];
-    for (var i = 0; i < aantalDagen; i++){
-      var d = new Date(eerste);
-      d.setUTCDate(d.getUTCDate() + i);
-      reeks.push(perDag[toISODateString(d)] || 0);
-    }
-    var venster = 7;
-    var som = 0;
     var rows = [];
-    for (i = 0; i < reeks.length; i++){
-      som += reeks[i];
-      if (i >= venster) som -= reeks[i - venster];
-      var n = Math.min(i + 1, venster);
-      var d2 = new Date(eerste);
-      d2.setUTCDate(d2.getUTCDate() + i);
-      rows.push({ start: d2, totaal: som / n });
+    for (var start = weekStartDate(dagen[0]); start <= laatste; start = new Date(start.getTime() + 7 * 86400000)){
+      var eind = new Date(start.getTime() + 6 * 86400000);
+      var van = start < eerste ? eerste : start;
+      var tot = eind > laatste ? laatste : eind;
+      var n = Math.round((tot - van) / 86400000) + 1;
+      var iso = toISODateString(start);
+      var wk = isoWeekKey(iso);
+      rows.push({ key: wk, start: start, totaal: (perWeek[wk] || 0) / n });
     }
     return rows;
   }
@@ -512,8 +510,8 @@ import { showSnackbar } from "./lib/snackbar";
       sub:"Elke dag met een bon in de gekozen periode",
       titel: function(r){ return fmtDateShort(toISODateString(r.start)); }, rowLabel:"totaal" },
     { key:"7dgem", label:"7d gem.",
-      sub:"Voortschrijdend 7-daags gemiddelde in de gekozen periode",
-      titel: function(r){ return fmtDateShort(toISODateString(r.start)); }, rowLabel:"gemiddeld/dag" },
+      sub:"Gemiddeld bedrag per dag, per weeknummer in de gekozen periode",
+      titel: function(r){ return "week " + Number(r.key.slice(6)) + " (vanaf " + fmtDateShort(toISODateString(r.start)) + ")"; }, rowLabel:"gemiddeld/dag" },
     { key:"maand", label:"Maand",
       sub:"Totaal per maand in de gekozen periode",
       titel: function(r){ return monthLabel(r.key); }, rowLabel:"totaal" }
@@ -538,7 +536,7 @@ import { showSnackbar } from "./lib/snackbar";
   function timeChartRows(mode, bonnen){
     if (mode === "dag") return dailyTotals(bonnen);
     if (mode === "maand") return monthlyTotals(bonnen);
-    return rolling7DayAvg(bonnen);
+    return weeklyDayAvg(bonnen);
   }
 
   function renderTimeChart(){
@@ -1086,6 +1084,13 @@ import { showSnackbar } from "./lib/snackbar";
       DATA = data;
       buildCategoryColorMap();
       renderAll();
+      // Snelactie: dezelfde keuze als regel vastleggen, zodat vergelijkbare
+      // producten (nu en op toekomstige bonnetjes) meteen meegaan.
+      if (store.maakRegel){
+        showSnackbar(omschrijving + " staat nu bij " + categorie + ".", {
+          action: { label: "Regel maken…", onClick: function(){ store.maakRegel(omschrijving, categorie); } },
+        });
+      }
     }).catch(function(err){
       showSnackbar("Opslaan mislukt: " + err.message, { error: true });
       select.disabled = false;
@@ -1175,6 +1180,8 @@ import { showSnackbar } from "./lib/snackbar";
       var rank = document.createElement("div"); rank.className="top-rank"; rank.textContent = String(i+1).padStart(2,"0");
       var name = document.createElement("div"); name.className="top-name";
       name.textContent = p.omschrijving;
+      // Waarom staat dit product in deze categorie? (correctie, trefwoord, eigen regel, AH)
+      if (store && store.uitleg) name.title = store.uitleg(p.omschrijving, p.keer ? p.totaal / p.keer : null);
       var count = document.createElement("div"); count.className="top-count"; count.textContent = p.keer + "x";
       var amount = document.createElement("div"); amount.className="top-amount"; amount.textContent = fmtEUR(p.totaal);
       var editHost = document.createElement("div");
