@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AH Bonnetjes ophalen",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Haalt je Albert Heijn-kassabonnen op voor het Boodschappenledger-dashboard. Alles blijft in je eigen browser.",
   "permissions": ["storage", "webRequest", "declarativeNetRequestWithHostAccess"],
   "host_permissions": ["https://api.ah.nl/*", "https://login.ah.nl/*"],

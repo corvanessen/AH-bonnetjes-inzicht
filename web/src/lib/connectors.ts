@@ -6,7 +6,9 @@ import * as ext from "./ahExtension";
 
 export interface Connector {
   kind: "extension" | "bridge";
-  getStatus(account: string): Promise<{ loggedIn: boolean }>;
+  getStatus(account: string): Promise<{ loggedIn: boolean; hostAccess?: boolean }>;
+  /** Alleen de extensie in Firefox: toegang tot de AH-sites vragen. */
+  grantAccess?(): Promise<void>;
   openLogin(account: string): Promise<void>;
   logout(account: string): Promise<void>;
   fetchReceipts(

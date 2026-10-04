@@ -16,10 +16,52 @@ interface FetchModalDeps {
 }
 
 const EXTENSION_HELP_URL = "https://github.com/corvanessen/AH-bonnetjes-inzicht#browser-extensie-installeren";
+const FIREFOX_ADDON_URL = "https://addons.mozilla.org/firefox/addon/ah-bonnetjes-ophalen/";
 
 const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
-type ConnState = "checking" | "noaccount" | "noconnector" | "loggedout" | "loggedin";
+const link = (href: string, textContent: string) =>
+  Object.assign(document.createElement("a"), { href, textContent, target: "_blank", rel: "noopener" });
+
+/** Uitleg als er geen extensie is, afhankelijk van browser en apparaat. */
+function noConnectorHelp(): (string | Node)[] {
+  const ua = navigator.userAgent;
+  const firefox = /Firefox\//.test(ua);
+  if (firefox) {
+    return [
+      "Om bonnetjes direct bij AH op te halen heb je de add-on “AH Bonnetjes ophalen” nodig. ",
+      link(FIREFOX_ADDON_URL, "Installeer hem hier"),
+      " en herlaad daarna deze pagina.",
+    ];
+  }
+  if (/Android/i.test(ua)) {
+    // Chrome op Android kent geen extensies; Firefox op Android wel. Deze link
+    // opent het dashboard in Firefox (of de Play Store als Firefox er niet is).
+    const fallback = encodeURIComponent("https://play.google.com/store/apps/details?id=org.mozilla.firefox");
+    const here = location.href.replace(/^https?:\/\//, "").split("#")[0];
+    const inFirefox = Object.assign(document.createElement("a"), {
+      href: `intent://${here}#Intent;scheme=${location.protocol.replace(":", "")};package=org.mozilla.firefox;S.browser_fallback_url=${fallback};end`,
+      textContent: "Open dit dashboard in Firefox",
+    });
+    return [
+      "Op je telefoon werkt ophalen bij AH via Firefox: deze browser kan geen extensies gebruiken. ",
+      inFirefox,
+      " en installeer daar de add-on “AH Bonnetjes ophalen”. Bonnetjes die je hier al hebt neem je mee via ☰ → Backup exporteren, en in Firefox ☰ → Backup importeren.",
+    ];
+  }
+  if (/iPhone|iPad|Macintosh.*Mobile/.test(ua)) {
+    return ["Op een iPhone of iPad kan ophalen bij AH (nog) niet. Haal je bonnetjes op de computer op en zet ze hier neer via ☰ → Backup importeren."];
+  }
+  return [
+    "Om bonnetjes direct bij AH op te halen heb je de browser-extensie “AH Bonnetjes ophalen” nodig (Chrome, Edge, Brave of ",
+    link(FIREFOX_ADDON_URL, "Firefox"),
+    "). ",
+    link(EXTENSION_HELP_URL, "Zo installeer je hem"),
+    ". Herlaad daarna deze pagina.",
+  ];
+}
+
+type ConnState = "checking" | "noaccount" | "noconnector" | "noaccess" | "loggedout" | "loggedin";
 
 export function initFetchModal(deps: FetchModalDeps): { open(): void; close(): void; isOpen(): boolean } {
   const overlay = el<HTMLElement>("fetchOverlay");
@@ -27,6 +69,7 @@ export function initFetchModal(deps: FetchModalDeps): { open(): void; close(): v
   const accountInput = el<HTMLInputElement>("fetchAccountName");
   const connStatus = el<HTMLElement>("fetchConnStatus");
   const retryBtn = el<HTMLButtonElement>("fetchRetryBtn");
+  const grantBtn = el<HTMLButtonElement>("fetchGrantBtn");
   const loginBtn = el<HTMLButtonElement>("fetchLoginBtn");
   const logoutBtn = el<HTMLButtonElement>("fetchLogoutBtn");
   const startBtn = el<HTMLButtonElement>("fetchStartBtn");
@@ -49,26 +92,19 @@ export function initFetchModal(deps: FetchModalDeps): { open(): void; close(): v
     loggedIn = state === "loggedin";
     connStatus.textContent = "";
     if (state === "noconnector") {
-      connStatus.append(
-        "Om bonnetjes direct bij AH op te halen heb je de browser-extensie “AH Bonnetjes ophalen” nodig. ",
-        Object.assign(document.createElement("a"), {
-          href: EXTENSION_HELP_URL,
-          target: "_blank",
-          rel: "noopener",
-          textContent: "Zo installeer je hem",
-        }),
-        ". Herlaad daarna deze pagina.",
-      );
+      connStatus.append(...noConnectorHelp());
     } else {
       connStatus.textContent = {
         checking: "Verbinding controleren…",
         noaccount: "Vul eerst een accountnaam in.",
+        noaccess: "De add-on heeft nog geen toestemming om met AH te praten. Geef die eenmalig en kom dan hier terug.",
         loggedout: "Nog niet ingelogd bij AH voor dit account.",
         loggedin: "Ingelogd bij AH ✓",
       }[state];
     }
     if (message) connStatus.append(" ", message);
-    retryBtn.hidden = state !== "noconnector";
+    retryBtn.hidden = state !== "noconnector" && state !== "noaccess";
+    grantBtn.hidden = state !== "noaccess";
     loginBtn.hidden = state !== "loggedout";
     logoutBtn.hidden = state !== "loggedin";
     startBtn.disabled = busy || !loggedIn;
@@ -85,6 +121,7 @@ export function initFetchModal(deps: FetchModalDeps): { open(): void; close(): v
     try {
       const status = await connector.getStatus(account);
       if (seq !== statusSeq) return; // account changed meanwhile
+      if (status.hostAccess === false) return setConn("noaccess");
       setConn(status.loggedIn ? "loggedin" : "loggedout");
     } catch (err) {
       if (seq !== statusSeq) return;
@@ -96,7 +133,7 @@ export function initFetchModal(deps: FetchModalDeps): { open(): void; close(): v
   async function login(): Promise<void> {
     if (!connector) return;
     loginBtn.disabled = true;
-    connStatus.textContent = "Log in bij AH in het geopende venster…";
+    connStatus.textContent = "Log in bij AH in het geopende venster of tabblad…";
     try {
       await connector.openLogin(accountName());
       setConn("loggedin");
@@ -181,6 +218,11 @@ export function initFetchModal(deps: FetchModalDeps): { open(): void; close(): v
     debounce = window.setTimeout(checkStatus, 350);
   });
   retryBtn.addEventListener("click", () => void checkStatus());
+  grantBtn.addEventListener("click", () => void connector?.grantAccess?.().catch(() => {}));
+  // Terug van de toestemmingspagina of het inlogtabblad (Android): opnieuw kijken.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && !overlay.hidden && !busy && !loggedIn && !loginBtn.disabled) void checkStatus();
+  });
   loginBtn.addEventListener("click", () => void login());
   logoutBtn.addEventListener("click", async () => {
     await connector?.logout(accountName()).catch(() => {});
