@@ -9,7 +9,7 @@ export default defineConfig({
     rolldownOptions: {
       output: {
         // tesseract.js laadt taaldata als "<langPath>/<taal>.traineddata.gz" —
-        // dat bestand moet dus zijn eigen naam houden (zie lidlOcrParser.ts).
+        // dat bestand moet dus zijn eigen naam houden (zie ocr.ts).
         assetFileNames: (asset) =>
           asset.names.some((n) => n.endsWith(".traineddata.gz"))
             ? "assets/tesseract/[name][extname]"

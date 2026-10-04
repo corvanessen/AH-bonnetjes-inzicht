@@ -4,7 +4,7 @@ import { enrichAccount, recategorize, type CategorieContext } from "./lib/enrich
 import { vertaalAh } from "./lib/ahTaxonomie";
 import type { GebruikersRegel } from "./lib/categorize";
 import { parseJsonReceipts } from "./lib/jsonParser";
-import { parseLidlImages } from "./lib/lidlOcrParser";
+import { parseReceiptImages } from "./lib/ocr";
 import { parsePdfReceipts } from "./lib/pdfParser";
 import type { AccountData, Artikel, Bon, DashboardData } from "./lib/types";
 import { showSnackbar } from "./lib/snackbar";
@@ -250,11 +250,12 @@ uploadForm.addEventListener("submit", async (ev) => {
 
     const jsonResult = parseJsonReceipts(jsonFiles);
     const pdfOnly = await parsePdfReceipts(pdfFiles);
-    const ocrResult = await parseLidlImages(imageFiles, (klaar, totaal) => {
-      uploadStatus.textContent = `Lidl-bonnetjes lezen (OCR)… ${klaar}/${totaal}`;
+    const ocrResult = await parseReceiptImages(imageFiles, (klaar, totaal) => {
+      uploadStatus.textContent = `Bonnetjes uit afbeeldingen lezen (OCR)… ${klaar}/${totaal}`;
     });
-    // OCR-bonnen (Lidl) lopen verder mee als "pdf-kant": ze hebben nooit een
-    // JSON-tegenhanger, dus mergeSources' PDF/JSON-ontdubbeling raakt ze niet.
+    // OCR-bonnen lopen verder mee als "pdf-kant". Lidl heeft geen JSON-tegenhanger;
+    // een gefotografeerde AH-bon wordt net als een PDF op (datum, totaal) tegen
+    // de JSON-versie ontdubbeld.
     const pdfResult = {
       bonnen: [...pdfOnly.bonnen, ...ocrResult.bonnen],
       artikelen: [...pdfOnly.artikelen, ...ocrResult.artikelen],

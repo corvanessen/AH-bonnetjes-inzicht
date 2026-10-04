@@ -961,8 +961,8 @@
         <p>Op je <strong>telefoon</strong> (Android) gebruik je Firefox: installeer daar de <a href="https://addons.mozilla.org/firefox/addon/ah-bonnetjes-ophalen/" target="_blank" rel="noopener">add-on AH Bonnetjes ophalen</a> en open dit dashboard in Firefox. Op de <strong>computer</strong> werkt dezelfde add-on in Firefox, en de extensie in Chrome, Edge of Brave (<a href="https://github.com/corvanessen/AH-bonnetjes-inzicht#browser-extensie-installeren" target="_blank" rel="noopener">zo installeer je hem</a>). Op een iPhone kan het (nog) niet.</p>
       </div>
       <div>
-        <h3>Lidl-bonnetjes (experimenteel)</h3>
-        <p>Open in de Lidl Plus-app een kassabon en maak er een screenshot van (de hele bon in één afbeelding). Die afbeelding kun je hier uploaden; de tekst wordt in je browser herkend (OCR). Een bon wordt alleen opgeslagen als de herkende regels precies optellen tot het totaal op de bon — anders krijg je een melding. Voor de herkenning wordt eenmalig een taalmodel (een paar MB) gedownload; je screenshots zelf verlaten je browser niet.</p>
+        <h3>Foto's en screenshots (experimenteel)</h3>
+        <p>Open in de Lidl Plus-app een kassabon en maak er een screenshot van (de hele bon in één afbeelding), of maak een foto van een papieren AH- of Lidl-bon (recht van boven, de hele bon in beeld, goed licht). Die afbeelding kun je hier uploaden; de tekst wordt in je browser herkend (OCR). Een bon wordt alleen opgeslagen als de herkende regels precies optellen tot het totaal op de bon — anders krijg je een melding. Voor de herkenning wordt eenmalig een taalmodel (een paar MB) gedownload; je afbeeldingen zelf verlaten je browser niet.</p>
       </div>
       <div>
         <h3>Later meer bonnetjes toevoegen</h3>
@@ -1085,7 +1085,7 @@
 
   <section class="card" id="uploadPanel" hidden>
     <div class="card-head">
-      <h2><span id="uploadTitle">Bonnetjes importeren</span><span class="sub">JSON-kassabonnen van de connector-tool (of accounts/&lt;naam&gt;/raw-jsons/data/) , PDF-kassabonnen en/of screenshots van Lidl-kassabonnen — kies er één of meerdere, ook gemengd.</span></h2>
+      <h2><span id="uploadTitle">Bonnetjes importeren</span><span class="sub">JSON-kassabonnen van de connector-tool (of accounts/&lt;naam&gt;/raw-jsons/data/) , PDF-kassabonnen en/of foto's of screenshots van kassabonnen — kies er één of meerdere, ook gemengd.</span></h2>
       <button class="toggle-btn" id="cancelUploadBtn" hidden>Annuleren</button>
     </div>
     <form class="upload-form" id="uploadForm">
@@ -1094,7 +1094,7 @@
         <datalist id="accountNameList"></datalist>
       </label>
       <p class="privacy-note" id="uploadMergeHint" hidden>Bestaat deze naam al, dan worden de bonnetjes aan dat account toegevoegd. Bonnetjes die er al in zitten worden overgeslagen.</p>
-      <label>JSON-, PDF- en/of Lidl-screenshotbestanden
+      <label>JSON-, PDF- en/of afbeeldingsbestanden
         <input type="file" id="uploadFiles" accept=".json,.pdf,.png,.jpg,.jpeg,.webp,application/json,application/pdf,image/png,image/jpeg,image/webp" multiple required>
       </label>
       <button type="submit" class="toggle-btn">Importeren</button>
