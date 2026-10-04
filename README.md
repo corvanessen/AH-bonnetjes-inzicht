@@ -94,10 +94,29 @@ weigert verzoeken vanaf andere websites, en de AH-login stuurt je terug naar
 een `appie://`-adres voor de app. Daarom loopt het via de browser-extensie in
 `extension/`.
 
-### Browser-extensie installeren
+### Op je telefoon (Android): Firefox-add-on
 
-De extensie staat (nog) niet in de Chrome Web Store en werkt alleen op de
-computer, in Chrome, Edge of Brave — niet in Firefox, Safari of op je telefoon.
+Chrome op Android kan geen extensies gebruiken, Firefox wel.
+
+1. Installeer [Firefox](https://play.google.com/store/apps/details?id=org.mozilla.firefox)
+   en daarin de add-on
+   [AH Bonnetjes ophalen](https://addons.mozilla.org/firefox/addon/ah-bonnetjes-ophalen/)
+   (tik **Toevoegen aan Firefox**).
+2. Open het dashboard in Firefox. Kies ☰ → "Ophalen bij supermarkt…".
+3. Vraagt het dashboard om toestemming, tik dan **Toestemming geven** en
+   bevestig. Dat hoeft maar één keer.
+4. Tik **Inloggen bij AH**. De AH-login opent in een tabblad; na het inloggen
+   sluit dat vanzelf en ben je terug in het dashboard.
+
+Opent het dashboard in Chrome, dan wijst de pop-up de weg naar Firefox.
+Bonnetjes die je al in Chrome had, neem je mee met een back-up. Op een iPhone
+kan het niet: Safari ondersteunt deze add-on niet.
+
+Dezelfde add-on werkt ook in Firefox op de computer.
+
+### Browser-extensie installeren (Chrome, Edge, Brave)
+
+De extensie staat (nog) niet in de Chrome Web Store.
 
 1. Download [`ah-bonnetjes-extensie.zip`](https://github.com/corvanessen/AH-bonnetjes-inzicht/releases/latest/download/ah-bonnetjes-extensie.zip)
    en pak hem uit. Je krijgt een map met o.a. `manifest.json` erin.
@@ -130,8 +149,8 @@ Zo werkt de extensie:
 - **Wat wordt opgehaald:** alleen bonnetjes die nog niet in het account in het
   dashboard staan.
 - **Problemen?** Open `chrome://extensions` → "AH Bonnetjes ophalen" →
-  *service worker*. De console daar laat zien wat de extensie doet
-  (`[AH-bonnetjes] …`).
+  *service worker* (Firefox: `about:debugging` → Deze Firefox → Inspecteren).
+  De console daar laat zien wat de extensie doet (`[AH-bonnetjes] …`).
 
 ### Een nieuwe versie van de extensie uitbrengen
 
@@ -140,6 +159,23 @@ begint met `extensie-v` (bv. `git tag extensie-v0.2.0 && git push origin
 extensie-v0.2.0`). De workflow `release-extension.yml` maakt dan een GitHub
 Release met `ah-bonnetjes-extensie.zip`; de downloadlink hierboven wijst
 altijd naar de nieuwste.
+
+De Firefox-versie is dezelfde code met een aangevuld manifest
+(`extension/firefox/manifest-overrides.json`). De workflow zet ook
+`ah-bonnetjes-firefox.zip` bij de release. Upload die op
+[addons.mozilla.org](https://addons.mozilla.org/developers/) als nieuwe versie
+(of automatisch, zie hieronder). Lokaal bouwen en testen:
+
+```sh
+node extension/firefox/build.mjs      # → build/firefox-extension/
+cd build/firefox-extension
+npx web-ext lint
+npx web-ext run                        # Firefox op de computer
+npx web-ext run -t firefox-android --android-device <id>   # telefoon via USB (adb)
+```
+
+Staan de repo-secrets `AMO_JWT_ISSUER` en `AMO_JWT_SECRET` (API-sleutels
+van addons.mozilla.org) erin, dan dient de workflow de nieuwe versie zelf in.
 
 ### Alternatief voor ontwikkelaars: `ah_bridge.py`
 

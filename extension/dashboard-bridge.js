@@ -37,7 +37,7 @@
       return;
     }
 
-    if (!["ping", "status", "login", "logout"].includes(req.type)) return;
+    if (!["ping", "status", "login", "logout", "grant"].includes(req.type)) return;
     chrome.runtime.sendMessage({ type: req.type, account: String(req.account ?? "") }, (resp) => {
       const err = chrome.runtime.lastError;
       send({ id: req.id, ok: !err && resp?.ok, result: resp?.result, error: err?.message ?? resp?.error });

@@ -9,6 +9,8 @@ import { NeedsLoginError, type BridgeStatus, type FetchEvent } from "./ahBridge"
 interface ExtStatus extends BridgeStatus {
   loginPending: boolean;
   loginError: string | null;
+  /** Firefox: mag de extensie bij login.ah.nl en api.ah.nl? (ontbreekt bij < 0.3.0) */
+  hostAccess?: boolean;
 }
 
 let seq = 0;
@@ -57,7 +59,13 @@ export const getStatus = (account: string) => call<ExtStatus>("status", account)
 
 export const logout = (account: string) => call<void>("logout", account);
 
-/** Opent het AH-loginvenster (beheerd door de extensie) en wacht tot het inloggen gelukt is. */
+/** Opent de toestemmingspagina van de extensie (Firefox vraagt host-rechten apart). */
+export const grantAccess = () => call<void>("grant");
+
+/**
+ * Opent het AH-loginvenster (beheerd door de extensie; op Android een tabblad)
+ * en wacht tot het inloggen gelukt is.
+ */
 export async function openLogin(account: string): Promise<void> {
   const before = (await getStatus(account)).updatedAt;
   await call("login", account);

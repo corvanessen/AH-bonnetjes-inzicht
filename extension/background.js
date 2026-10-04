@@ -6,7 +6,7 @@
 // mag beide: de declarativeNetRequest-regel hieronder haalt de Origin weg bij
 // onze eigen verzoeken, en de login-scripts vangen de code op.
 //
-// Tokens blijven in chrome.storage.local van deze extensie; het dashboard
+// Tokens blijven in storage.local van deze extensie; het dashboard
 // krijgt alleen de bonnetjes zelf.
 
 const API = "https://api.ah.nl";
@@ -20,9 +20,13 @@ const PAGE_SIZE = 100;
 
 const log = (...args) => console.log("[AH-bonnetjes]", ...args);
 
+// Firefox (computer en Android) kent `browser` met promises; Chrome alleen `chrome`.
+const ext = globalThis.browser ?? chrome;
+const HOST_ORIGINS = ["https://api.ah.nl/*", "https://login.ah.nl/*"];
+
 // --- Origin weghalen bij onze eigen API-verzoeken ------------------------------
 
-const rulesReady = chrome.declarativeNetRequest.updateSessionRules({
+const rulesReady = ext.declarativeNetRequest.updateSessionRules({
   removeRuleIds: [1],
   addRules: [
     {
@@ -36,10 +40,29 @@ const rulesReady = chrome.declarativeNetRequest.updateSessionRules({
         ],
       },
       // Alleen verzoeken die niet uit een tabblad komen, dus van deze service worker.
-      condition: { requestDomains: ["api.ah.nl"], tabIds: [chrome.tabs.TAB_ID_NONE] },
+      condition: { requestDomains: ["api.ah.nl"], tabIds: [ext.tabs.TAB_ID_NONE] },
     },
   ],
 });
+
+// Firefox: daar mag webRequest nog headers aanpassen (firefox/manifest-overrides.json vraagt
+// webRequestBlocking). Dubbel op met de regel hierboven, voor het geval
+// declarativeNetRequest daar de verzoeken van de extensie zelf overslaat.
+if (ext.runtime.getManifest().permissions?.includes("webRequestBlocking")) {
+  ext.webRequest.onBeforeSendHeaders.addListener(
+    (d) => {
+      if (d.tabId !== -1) return {};
+      const requestHeaders = d.requestHeaders.filter((h) => !/^(origin|user-agent)$/i.test(h.name));
+      requestHeaders.push({ name: "User-Agent", value: USER_AGENT });
+      return { requestHeaders };
+    },
+    { urls: ["https://api.ah.nl/*"] },
+    ["blocking", "requestHeaders"],
+  );
+}
+
+/** Firefox geeft host-rechten pas na toestemming; Chrome bij installatie. */
+const hasHostAccess = () => ext.permissions.contains({ origins: HOST_ORIGINS }).catch(() => true);
 
 // --- tokens ----------------------------------------------------------------------
 
@@ -48,15 +71,15 @@ class NeedsLogin extends Error {}
 const accountKey = (account) => (account || "").trim().toLowerCase() || "default";
 
 async function loadTokens(account) {
-  const { tokens = {} } = await chrome.storage.local.get("tokens");
+  const { tokens = {} } = await ext.storage.local.get("tokens");
   return tokens[accountKey(account)] ?? null;
 }
 
 async function saveTokens(account, value) {
-  const { tokens = {} } = await chrome.storage.local.get("tokens");
+  const { tokens = {} } = await ext.storage.local.get("tokens");
   if (value) tokens[accountKey(account)] = value;
   else delete tokens[accountKey(account)];
-  await chrome.storage.local.set({ tokens });
+  await ext.storage.local.set({ tokens });
 }
 
 function tokensFrom(tok, updatedAt) {
@@ -196,16 +219,30 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // intypen van het wachtwoord gestopt worden en daarna opnieuw opstarten.
 
 async function getPending() {
-  const { pendingLogin = null } = await chrome.storage.session.get("pendingLogin");
+  const { pendingLogin = null } = await ext.storage.session.get("pendingLogin");
   return pendingLogin;
 }
-const setPending = (pendingLogin) => chrome.storage.session.set({ pendingLogin });
+const setPending = (pendingLogin) => ext.storage.session.set({ pendingLogin });
 
-async function startLogin(account) {
+// Op de computer een los venster; Firefox op Android kent geen vensters, daar
+// wordt het een tabblad en gaan we na het inloggen terug naar het dashboard.
+async function closeLogin(pending) {
+  if (pending?.windowId) await ext.windows.remove(pending.windowId).catch(() => {});
+  if (pending?.tabId) await ext.tabs.remove(pending.tabId).catch(() => {});
+  if (pending?.returnTabId) await ext.tabs.update(pending.returnTabId, { active: true }).catch(() => {});
+}
+
+async function startLogin(account, returnTabId) {
   const old = await getPending();
-  if (old?.windowId) chrome.windows.remove(old.windowId).catch(() => {});
-  const win = await chrome.windows.create({ url: LOGIN_URL, type: "popup", width: 480, height: 760 });
-  await setPending({ account, windowId: win.id, error: null });
+  await setPending(null); // anders telt het sluiten van het oude venster als "zelf gesloten"
+  if (old) await closeLogin({ ...old, returnTabId: null });
+  if (ext.windows) {
+    const win = await ext.windows.create({ url: LOGIN_URL, type: "popup", width: 480, height: 760 });
+    await setPending({ account, windowId: win.id, error: null });
+  } else {
+    const tab = await ext.tabs.create({ url: LOGIN_URL, active: true });
+    await setPending({ account, tabId: tab.id, returnTabId: returnTabId ?? null, error: null });
+  }
   log("login gestart voor", accountKey(account));
 }
 
@@ -224,7 +261,7 @@ async function handleCode(code, source) {
     const tok = await apiRequest("/mobile-auth/v1/auth/token", { clientId: CLIENT_ID, code });
     await saveTokens(pending.account, tokensFrom(tok, Date.now()));
     await setPending(null);
-    if (pending.windowId) chrome.windows.remove(pending.windowId).catch(() => {});
+    await closeLogin(pending);
     log("ingelogd voor", accountKey(pending.account));
   } catch (err) {
     log("code omwisselen mislukt", err);
@@ -241,21 +278,26 @@ const codeFromUrl = (url) => {
 };
 
 // 1) Server-redirect naar appie://login-exit?code=...
-chrome.webRequest.onBeforeRedirect.addListener(
+ext.webRequest.onBeforeRedirect.addListener(
   (d) => {
     if (d.redirectUrl?.startsWith("appie://")) handleCode(codeFromUrl(d.redirectUrl), "redirect");
   },
   { urls: ["https://login.ah.nl/*"] },
 );
 // 2) Navigatie naar het herschreven callback-adres.
-chrome.webRequest.onBeforeRequest.addListener(
+ext.webRequest.onBeforeRequest.addListener(
   (d) => handleCode(codeFromUrl(d.url), "callback"),
   { urls: [`${CALLBACK_PREFIX}*`] },
 );
 
-chrome.windows.onRemoved.addListener(async (windowId) => {
+// Venster of tabblad zelf gesloten: login afgebroken.
+ext.windows?.onRemoved.addListener(async (windowId) => {
   const pending = await getPending();
-  if (pending?.windowId === windowId && !pending.error) await setPending(null); // venster zelf gesloten
+  if (pending?.windowId === windowId && !pending.error) await setPending(null);
+});
+ext.tabs.onRemoved.addListener(async (tabId) => {
+  const pending = await getPending();
+  if (pending?.tabId === tabId && !pending.error) await setPending(null);
 });
 
 // --- berichten van het dashboard (via dashboard-bridge.js) en de loginpagina --------
@@ -269,10 +311,11 @@ async function status(account) {
     updatedAt: t?.updatedAt ?? null,
     loginPending: !!mine,
     loginError: mine ? pending.error : null,
+    hostAccess: await hasHostAccess(),
   };
 }
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+ext.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const reply = (p) =>
     p.then(
       (result) => sendResponse({ ok: true, result }),
@@ -283,13 +326,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       handleCode(msg.code, msg.via || "page");
       return false;
     case "ping":
-      sendResponse({ ok: true, result: { version: chrome.runtime.getManifest().version } });
+      sendResponse({ ok: true, result: { version: ext.runtime.getManifest().version } });
       return false;
     case "status":
       reply(status(msg.account));
       return true;
     case "login":
-      reply(startLogin(msg.account));
+      reply(startLogin(msg.account, sender.tab?.id));
+      return true;
+    case "grant": // toestemmingspagina openen; permissions.request mag alleen na een klik in de extensie zelf
+      reply(ext.tabs.create({ url: ext.runtime.getURL("grant.html"), active: true }).then(() => {}));
       return true;
     case "logout":
       reply(saveTokens(msg.account, null));
@@ -300,7 +346,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 // AH-productcategorieën ophalen via een port, met voortgang per product.
-chrome.runtime.onConnect.addListener((port) => {
+ext.runtime.onConnect.addListener((port) => {
   if (port.name !== "products") return;
   let open = true;
   port.onDisconnect.addListener(() => (open = false));
@@ -321,7 +367,7 @@ chrome.runtime.onConnect.addListener((port) => {
 });
 
 // Bonnetjes ophalen via een port, zodat voortgang per bon doorgegeven kan worden.
-chrome.runtime.onConnect.addListener((port) => {
+ext.runtime.onConnect.addListener((port) => {
   if (port.name !== "fetch") return;
   let open = true;
   port.onDisconnect.addListener(() => (open = false));

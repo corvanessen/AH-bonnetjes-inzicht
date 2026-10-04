@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AH Bonnetjes ophalen</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 32rem; margin: 2rem auto; padding: 0 16px; color: #1d1d1f; background: #fff; }
+  button { font: inherit; padding: 0.7rem 1.2rem; border: 0; border-radius: 8px; background: #00a0e2; color: #fff; cursor: pointer; }
+  .ok { color: #1a7f37; }
+  .fout { color: #b42318; }
+  @media (prefers-color-scheme: dark) { body { background: #1c1c1e; color: #f2f2f7; } }
+</style>
+</head>
+<body>
+  <h1>Toestemming voor AH</h1>
+  <p>Om je bonnetjes op te halen moet de extensie met <strong>login.ah.nl</strong> en <strong>api.ah.nl</strong> mogen praten. Andere websites krijgt hij niet te zien.</p>
+  <p><button id="grant" type="button">Toestemming geven</button></p>
+  <p id="result" role="status"></p>
+  <script src="grant.js"></script>
+</body>
+</html>

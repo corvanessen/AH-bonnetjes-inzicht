@@ -958,7 +958,7 @@
       <div>
         <h3>AH-bonnetjes direct ophalen</h3>
         <p>Via het menu (☰ → "Ophalen bij supermarkt…") log je in bij AH en worden je bonnetjes automatisch gedownload en ingelezen. Omdat AH dit niet rechtstreeks vanuit een website toestaat, heb je daarvoor de browser-extensie <strong>AH Bonnetjes ophalen</strong> nodig. Die logt in op de echte AH-loginpagina en bewaart je AH-sessie in je eigen browser; het dashboard krijgt alleen de bonnetjes. Er is geen server tussen jou en AH.</p>
-        <p>De extensie werkt alleen op de computer, in Chrome, Edge of Brave. <a href="https://github.com/corvanessen/AH-bonnetjes-inzicht#browser-extensie-installeren" target="_blank" rel="noopener">Zo installeer je hem</a> — het kost een paar minuten en hoeft maar één keer.</p>
+        <p>Op je <strong>telefoon</strong> (Android) gebruik je Firefox: installeer daar de <a href="https://addons.mozilla.org/firefox/addon/ah-bonnetjes-ophalen/" target="_blank" rel="noopener">add-on AH Bonnetjes ophalen</a> en open dit dashboard in Firefox. Op de <strong>computer</strong> werkt dezelfde add-on in Firefox, en de extensie in Chrome, Edge of Brave (<a href="https://github.com/corvanessen/AH-bonnetjes-inzicht#browser-extensie-installeren" target="_blank" rel="noopener">zo installeer je hem</a>). Op een iPhone kan het (nog) niet.</p>
       </div>
       <div>
         <h3>Lidl-bonnetjes (experimenteel)</h3>
@@ -1033,6 +1033,7 @@
         <h3>3. Inloggen bij AH</h3>
         <p id="fetchConnStatus">Verbinding controleren…</p>
         <div class="fetch-actions">
+          <button type="button" class="toggle-btn" id="fetchGrantBtn" hidden>Toestemming geven</button>
           <button type="button" class="toggle-btn" id="fetchRetryBtn" hidden>Opnieuw controleren</button>
           <button type="button" class="toggle-btn" id="fetchLoginBtn" hidden>Inloggen bij AH</button>
           <button type="button" class="link-btn" id="fetchLogoutBtn" hidden>Uitloggen</button>

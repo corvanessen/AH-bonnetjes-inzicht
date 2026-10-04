@@ -19,6 +19,8 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ inputs.tag || github.ref_name }}
+      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
     steps:
       - uses: actions/checkout@v5
 
@@ -33,14 +35,35 @@ jobs:
       # Bestanden in de root van de zip, zodat uitpakken direct een map met
       # manifest.json oplevert die je in chrome://extensions kunt laden.
       - name: Zip maken
-        run: cd extension && zip -r ../ah-bonnetjes-extensie.zip . -x '.*'
+        run: cd extension && zip -r ../ah-bonnetjes-extensie.zip . -x '.*' -x 'firefox/*'
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      # Firefox (computer en Android): zelfde code, aangevuld manifest.
+      - name: Firefox-versie bouwen en controleren
+        run: |
+          node extension/firefox/build.mjs
+          cd build/firefox-extension
+          npx --yes web-ext lint
+          zip -r ../../ah-bonnetjes-firefox.zip . -x '.*'
+
+      # Alleen als de AMO-sleutels als repo-secret bestaan; anders handmatig uploaden.
+      - name: Indienen bij addons.mozilla.org
+        if: ${{ env.AMO_JWT_ISSUER != '' }}
+        run: |
+          cd build/firefox-extension
+          npx --yes web-ext sign --channel=listed \
+            --api-key="$AMO_JWT_ISSUER" --api-secret="$AMO_JWT_SECRET" \
+            --approval-timeout=0
 
       - name: Release maken of bijwerken
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" ah-bonnetjes-extensie.zip --clobber
+            gh release upload "$TAG" ah-bonnetjes-extensie.zip ah-bonnetjes-firefox.zip --clobber
           else
-            gh release create "$TAG" ah-bonnetjes-extensie.zip \
+            gh release create "$TAG" ah-bonnetjes-extensie.zip ah-bonnetjes-firefox.zip \
               --target "$GITHUB_SHA" \
               --title "Browser-extensie ${TAG#extensie-}" \
               --notes "Installeren: zie https://github.com/corvanessen/AH-bonnetjes-inzicht#browser-extensie-installeren"
