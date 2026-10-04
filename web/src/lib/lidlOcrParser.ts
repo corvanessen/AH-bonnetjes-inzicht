@@ -1,14 +1,10 @@
 /**
  * Lidl kassabonnen uit screenshots van de Lidl Plus-app ("Kopie kassabon"),
- * via OCR (tesseract.js) in de browser. Anders dan de AH-PDF's bevatten
- * deze plaatjes geen tekstlaag, dus moet de tekst eerst herkend worden.
+ * via OCR (tesseract.js, zie ocr.ts) in de browser. Anders dan de AH-PDF's
+ * bevatten deze plaatjes geen tekstlaag, dus moet de tekst eerst herkend
+ * worden; dit bestand parseert alleen de herkende tekst, zodat het zonder
+ * OCR te testen is.
  *
- * Twee stappen, bewust gescheiden zodat de tekst-parser zonder OCR te
- * testen is:
- * - ocrImage(): vergroot het plaatje 3x en zet het om naar zwart-wit
- *   (grijswaarde + drempel) voor tesseract. De app-screenshots zijn klein
- *   (~340px breed); zonder die voorbewerking valt tesseract regels over en
- *   leest het de blauwe kortingsregels niet.
  * - parseLidlText(): regex-parser op de herkende tekst. Monospace-bon, dus
  *   elke regel is "omschrijving [n x stukprijs] bedrag btw-letter", een
  *   kortingsregel ("Lidl Plus korting -0,36", hoort bij het artikel erboven)
@@ -19,18 +15,7 @@
  * niet uitkomt wordt overgeslagen met een melding — nooit stilletjes half
  * goed opgeslagen.
  */
-// Worker, wasm-kern en Nederlandse taaldata worden meegebundeld en vanaf de
-// eigen origin geladen i.p.v. tesseract.js' standaard-CDN: de CSP in
-// index.html staat alleen 'self' toe, en zo verlaat er niets de browser.
-import tesseractWorkerUrl from "tesseract.js/dist/worker.min.js?url";
-import tesseractCoreUrl from "tesseract.js-core/tesseract-core-simd-lstm.wasm.js?url";
-import nldTraineddataUrl from "@tesseract.js-data/nld/4.0.0_best_int/nld.traineddata.gz?url";
 import type { Artikel, Bon } from "./types";
-
-// Zie het bestandscomment: vergroting en drempel zijn afgestemd op de
-// Lidl Plus-screenshots (zwarte en blauwe tekst op wit, grijs watermerk).
-const SCHAAL = 3;
-const DREMPEL = 170;
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -50,21 +35,25 @@ const KORTING_REGEL = new RegExp(String.raw`^(.*(?:korting|actie|verlaagd|prijs)
 const GEWICHT_REGEL = /^(\d+[.,]\d{3})\s*kg\s*x\s*(\d+[.,]\d\d)/i;
 const STATIEGELD = /statiegeld|st\.?\s?geld|losse fles|leeg ?goed/i;
 
-export interface LidlBon {
+export interface OcrBon {
   bon: Bon;
   artikelen: Artikel[];
   /** Controles die niet klopten maar de bon niet ongeldig maken (bv. aantal artikelen). */
   meldingen: string[];
 }
 
-export function parseLidlText(tekst: string, bestand: string): LidlBon {
+export function isLidlTekst(tekst: string): boolean {
+  return /lidl/i.test(tekst);
+}
+
+export function parseLidlText(tekst: string, bestand: string): OcrBon {
   const regels = tekst
     .split("\n")
     .map((r) => r.trim())
     .filter(Boolean);
   const volledig = regels.join("\n");
 
-  if (!/lidl/i.test(volledig)) throw new Error("geen herkenbare Lidl-kassabon");
+  if (!isLidlTekst(volledig)) throw new Error("geen herkenbare Lidl-kassabon");
 
   const start = regels.findIndex((r) => /OMSCHRIJVING/i.test(r));
   const eind = regels.findIndex((r) => /^Aantal\s+\d+\s*art/i.test(r));
@@ -198,81 +187,4 @@ export function parseLidlText(tekst: string, bestand: string): LidlBon {
   };
 
   return { bon, artikelen, meldingen };
-}
-
-type TesseractWorker = Awaited<ReturnType<typeof import("tesseract.js")["createWorker"]>>;
-
-/** Vergroot + zwart-wit, zie het bestandscomment. */
-async function voorbewerk(file: Blob): Promise<HTMLCanvasElement> {
-  const bitmap = await createImageBitmap(file);
-  const canvas = document.createElement("canvas");
-  canvas.width = bitmap.width * SCHAAL;
-  canvas.height = bitmap.height * SCHAAL;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) throw new Error("canvas niet beschikbaar");
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-
-  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const px = img.data;
-  for (let i = 0; i < px.length; i += 4) {
-    const grijs = 0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2];
-    const v = grijs >= DREMPEL ? 255 : 0;
-    px[i] = px[i + 1] = px[i + 2] = v;
-    px[i + 3] = 255;
-  }
-  ctx.putImageData(img, 0, 0);
-  return canvas;
-}
-
-/** Parseert meerdere screenshots; een onleesbare bon mag de rest van de batch niet blokkeren. */
-export async function parseLidlImages(
-  files: { name: string; data: Blob }[],
-  onProgress?: (klaar: number, totaal: number) => void,
-): Promise<{ bonnen: Bon[]; artikelen: Artikel[]; warnings: string[] }> {
-  const bonnen: Bon[] = [];
-  const artikelen: Artikel[] = [];
-  const warnings: string[] = [];
-  if (files.length === 0) return { bonnen, artikelen, warnings };
-
-  // Pas hier laden: wie alleen AH-bonnen importeert downloadt tesseract (en de taaldata) nooit.
-  const { createWorker, OEM, PSM } = await import("tesseract.js");
-  let worker: TesseractWorker | null = null;
-  try {
-    worker = await createWorker("nld", OEM.LSTM_ONLY, {
-      workerPath: tesseractWorkerUrl,
-      corePath: tesseractCoreUrl,
-      // tesseract zoekt "<langPath>/nld.traineddata.gz"; vite.config.ts houdt die bestandsnaam daarom zonder hash
-      langPath: new URL(".", new URL(nldTraineddataUrl, location.href)).href,
-      // worker gewoon als bestand vanaf 'self' starten, niet als blob:-kopie
-      workerBlobURL: false,
-      // de browser-HTTP-cache volstaat; tesseract's eigen IndexedDB-kopie (ongezipt ~10 MB) is overbodig
-      cacheMethod: "none",
-    });
-    await worker.setParameters({
-      tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
-      preserve_interword_spaces: "1",
-    });
-
-    for (const [i, { name, data }] of files.entries()) {
-      onProgress?.(i, files.length);
-      try {
-        const canvas = await voorbewerk(data);
-        const { data: resultaat } = await worker.recognize(canvas);
-        const { bon, artikelen: items, meldingen } = parseLidlText(resultaat.text, name);
-        bonnen.push(bon);
-        artikelen.push(...items);
-        warnings.push(...meldingen.map((m) => `${name}: ${m}`));
-      } catch (err) {
-        warnings.push(`kon ${name} niet verwerken: ${(err as Error).message}`);
-      }
-    }
-    onProgress?.(files.length, files.length);
-  } finally {
-    await worker?.terminate();
-  }
-
-  return { bonnen, artikelen, warnings };
 }
